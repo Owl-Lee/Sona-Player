@@ -2,19 +2,19 @@
 
 > A local-first, offline-ready music player for Windows and Android.
 
-[Website](https://owl-lee.github.io/Sona-Player/?lang=en) · [Download](https://github.com/Owl-Lee/Sona-Player/releases/latest) · [Report an issue](https://github.com/Owl-Lee/Sona-Player/issues) · [简体中文](#chinese--简体中文)
+**English** · [简体中文](#简体中文) · [Website](https://owl-lee.github.io/Sona-Player/?lang=en) · [Download](https://github.com/Owl-Lee/Sona-Player/releases/latest) · [Documentation](docs/README.md) · [Report an issue](https://github.com/Owl-Lee/Sona-Player/issues)
 
-![Sona immersive vinyl player](docs/site/assets/screenshots/player.png)
+![Sona immersive vinyl player in English](docs/site/assets/screenshots/player-en.png)
 
-Sona is made for people who keep their own music files. Import, organize and play your music and MVs without depending on an online catalog or an always-on connection. The interface combines liquid-glass surfaces, an immersive vinyl player and theme-aware visuals with a practical local library.
+Sona is made for people who keep their own music files. Import, organize and play music and local MVs without depending on an online catalog or an always-on connection. Its interface combines liquid-glass surfaces, an immersive vinyl player and theme-aware visuals with a practical local library.
 
 ## Highlights
 
-- **Local-first playback** — your library, playlists, favorites, queue and history remain usable offline.
-- **Music and MVs together** — manage audio and local video through one consistent playback flow.
-- **Smart metadata cleanup** — use media tags, filename parsing and MusicBrainz, with optional Chromaprint / AcoustID fingerprint matching on Windows.
-- **A library that feels personal** — favorites, playlists, recents, listening charts and expressive text covers.
-- **Theme-aware design** — liquid glass, vinyl playback, adaptive contrast and multiple wallpaper effects.
+- **Local-first playback** — the library, playlists, favorites, queue and listening history remain usable offline.
+- **Music and MVs together** — audio and local video share one consistent playback and queue model.
+- **Smart metadata cleanup** — media tags, filename parsing and MusicBrainz are combined with optional Chromaprint / AcoustID fingerprint matching on Windows.
+- **A personal library** — favorites, playlists, recents, listening charts, search, filters and expressive text covers.
+- **Theme-aware design** — liquid glass, vinyl playback, adaptive contrast and wallpaper-specific effects.
 - **Three interface languages** — Simplified Chinese, Traditional Chinese and English.
 
 ## Download
@@ -25,6 +25,18 @@ Sona is made for people who keep their own music files. Import, organize and pla
 | Android | [Download APK](https://github.com/Owl-Lee/Sona-Player/releases/latest/download/Sona-Android.apk) | Direct install; development-signed preview |
 
 The current release is a public preview. Download builds only from this repository or the [official Sona website](https://owl-lee.github.io/Sona-Player/?lang=en).
+
+## How identification works
+
+Sona uses a layered metadata pipeline instead of relying on a single service:
+
+1. Read embedded media tags locally.
+2. Clean and interpret the filename.
+3. Query the public MusicBrainz catalog when useful.
+4. Optionally generate a Chromaprint fingerprint and query AcoustID for difficult tracks.
+5. Present candidate metadata for confirmation instead of silently overwriting the library.
+
+Without an AcoustID key, identification still uses local tags, filename cleanup and MusicBrainz. A free AcoustID application key only enables the optional fingerprint fallback.
 
 ## Technology
 
@@ -45,36 +57,71 @@ flutter analyze
 flutter run -d windows
 ```
 
-Optional AcoustID lookup can be enabled with a free application key:
+Optional AcoustID lookup can be enabled at build time:
 
 ```powershell
 flutter build windows --release --dart-define=ACOUSTID_API_KEY=YOUR_APPLICATION_KEY
 ```
 
-Without an AcoustID key, track identification still uses local tags, filename cleanup and the free MusicBrainz public database. Candidate metadata is presented for confirmation rather than silently overwriting the library.
+## Documentation
 
-## Privacy and product scope
+The public documentation keeps engineering decisions that may be useful to contributors, while removing machine-specific paths, private operational notes and obsolete handoff details.
+
+- [Documentation index](docs/README.md)
+- [Architecture and data flow](docs/architecture/overview.md)
+- [Interaction and motion guidelines](docs/design/interaction-and-motion.md)
+- [Reliability test matrix](docs/testing/reliability-checklist.md)
+- [Development and maintenance guide](docs/contributing/development-guide.md)
+- [Curated development history](docs/history/development-notes.md)
+
+## Privacy and scope
 
 Sona is not a music distribution service and does not provide copyrighted tracks. Your local files remain on your device unless you explicitly use an optional sync feature. Cloud services enhance the experience; they are not required for local playback.
 
-## Chinese / 简体中文
+---
 
-<details>
-<summary><strong>展开中文介绍 / View Chinese summary</strong></summary>
+## 简体中文
 
-<br>
+> 一款面向 Windows 与 Android 的本地优先、离线可用音乐播放器。
 
-Sona 是一款面向 Windows 和 Android 的本地优先音乐播放器。它用于导入、整理和播放你自己拥有的音乐与 MV，不依赖在线曲库，断网时本地曲库、歌单、收藏、播放队列和记录仍然可用。
+[中文网站](https://owl-lee.github.io/Sona-Player/) · [下载最新版本](https://github.com/Owl-Lee/Sona-Player/releases/latest) · [项目文档](docs/README.md) · [提交问题](https://github.com/Owl-Lee/Sona-Player/issues) · [返回英文](#sona)
 
-主要功能包括：
+![Sona 简体中文沉浸式黑胶播放页](docs/site/assets/screenshots/player.png)
 
-- 音乐与本地 MV 的统一管理和播放；
-- 标签、文件名、MusicBrainz 与可选音频声纹识别；
-- 收藏、歌单、最近播放、听歌排行和播放队列；
-- 液态毛玻璃、黑胶播放页、多套壁纸与主题特效；
-- 简体中文、繁體中文与 English 界面；
-- Windows 桌面端与 Android 窄屏适配。
+Sona 面向拥有自己音乐文件的用户。它可以导入、整理并播放本地音乐和 MV，不依赖在线曲库，也不会因为网络断开让本地播放器失去作用。界面以液态毛玻璃、沉浸式黑胶播放器、主题联动视觉和实用曲库管理为核心。
 
-[访问中文官网](https://owl-lee.github.io/Sona-Player/) · [下载最新版本](https://github.com/Owl-Lee/Sona-Player/releases/latest) · [提交问题](https://github.com/Owl-Lee/Sona-Player/issues)
+### 主要亮点
 
-</details>
+- **本地优先：** 曲库、歌单、收藏、播放队列和听歌记录在离线状态仍然可用。
+- **音乐与 MV 统一：** 音频和本地视频使用一致的播放、队列和切歌逻辑。
+- **智能整理：** 结合媒体标签、文件名语义、MusicBrainz，以及 Windows 端可选的 Chromaprint / AcoustID 声纹回退。
+- **完整曲库管理：** 支持收藏、歌单、最近播放、听歌排行、搜索、筛选和文字封面。
+- **主题化外观：** 液态玻璃、黑胶唱片、自适应对比度和不同壁纸对应的专属特效。
+- **三种界面语言：** 简体中文、繁體中文和 English。
+
+### 下载
+
+| 平台 | 安装包 | 说明 |
+| --- | --- | --- |
+| Windows 10 / 11 | [下载 ZIP](https://github.com/Owl-Lee/Sona-Player/releases/latest/download/Sona-Windows-x64.zip) | 64 位便携版 |
+| Android | [下载 APK](https://github.com/Owl-Lee/Sona-Player/releases/latest/download/Sona-Android.apk) | 直接安装；公开预览版使用开发签名 |
+
+当前版本属于公开预览。请只从本仓库或 [Sona 官方网站](https://owl-lee.github.io/Sona-Player/)下载安装包。
+
+### 歌曲信息识别逻辑
+
+Sona 不把所有识别压力交给单一在线服务，而是按层处理：
+
+1. 优先读取本地媒体标签；
+2. 清理并理解文件名；
+3. 必要时查询 MusicBrainz 公共资料库；
+4. 对困难歌曲可生成 Chromaprint 声纹，并通过 AcoustID 查询候选结果；
+5. 在覆盖曲库资料前向用户展示候选信息，避免错误结果静默污染曲库。
+
+未配置 AcoustID Key 时，标签、文件名和 MusicBrainz 仍然可以正常工作。免费的 AcoustID 应用 Key 只用于启用可选的声纹回退。
+
+### 隐私与边界
+
+Sona 不是音乐分发服务，也不提供版权歌曲。除非用户主动启用可选同步功能，否则本地音乐文件会保留在设备上；云端是增强能力，不是本地播放的使用前提。
+
+更多设计、架构、测试和维护资料见 [项目文档索引](docs/README.md)。
