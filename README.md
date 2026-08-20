@@ -1,42 +1,43 @@
 # Sona
 
-[English](#english) · [简体中文](#简体中文)
+> A local-first, offline-ready music player for Windows and Android.
 
-> 本地优先、离线可用的私人音乐播放器。Local-first, offline-ready music for Windows and Android.
+[Website](https://owl-lee.github.io/Sona-Player/?lang=en) · [Download](https://github.com/Owl-Lee/Sona-Player/releases/latest) · [Report an issue](https://github.com/Owl-Lee/Sona-Player/issues) · [简体中文](#chinese--简体中文)
 
-[产品官网 / Website](https://owl-lee.github.io/Sona-Player/) · [下载 / Download](https://github.com/Owl-Lee/Sona-Player/releases/latest) · [问题反馈 / Issues](https://github.com/Owl-Lee/Sona-Player/issues)
+![Sona immersive vinyl player](docs/site/assets/screenshots/player.png)
 
-![Sona 沉浸式播放页](docs/site/assets/screenshots/player.png)
+Sona is made for people who keep their own music files. Import, organize and play your music and MVs without depending on an online catalog or an always-on connection. The interface combines liquid-glass surfaces, an immersive vinyl player and theme-aware visuals with a practical local library.
 
-## English
+## Highlights
 
-Sona is a local-first, offline-ready music player for Windows and Android. It is not an online catalog: it helps you import, organize and play music and MVs you already own, with liquid-glass surfaces, an immersive vinyl player and expressive themes.
+- **Local-first playback** — your library, playlists, favorites, queue and history remain usable offline.
+- **Music and MVs together** — manage audio and local video through one consistent playback flow.
+- **Smart metadata cleanup** — use media tags, filename parsing and MusicBrainz, with optional Chromaprint / AcoustID fingerprint matching on Windows.
+- **A library that feels personal** — favorites, playlists, recents, listening charts and expressive text covers.
+- **Theme-aware design** — liquid glass, vinyl playback, adaptive contrast and multiple wallpaper effects.
+- **Three interface languages** — Simplified Chinese, Traditional Chinese and English.
 
-> The current release is the `0.4.50` public preview. Windows is distributed as a 64-bit portable package and Android as an APK. The Android build currently uses a development signature; download it only from the official website or GitHub Releases.
+## Download
 
-### Highlights
+| Platform | Package | Notes |
+| --- | --- | --- |
+| Windows 10 / 11 | [Download ZIP](https://github.com/Owl-Lee/Sona-Player/releases/latest/download/Sona-Windows-x64.zip) | 64-bit portable build |
+| Android | [Download APK](https://github.com/Owl-Lee/Sona-Player/releases/latest/download/Sona-Android.apk) | Direct install; development-signed preview |
 
-- Import one or many media files, or scan folders recursively; SHA-256 and SQLite prevent duplicate entries.
-- Local library, search, favorites, recents, playlists, playback queue and listening charts.
-- Unified music and local MV management, linked playback and a dedicated MV area.
-- Vinyl player, mini player, volume, shuffle, repeat and queue controls.
-- Desktop layouts for Windows and narrow-screen adaptation for Android.
-- Simplified Chinese, Traditional Chinese and English interfaces.
-- Optional cloud account and sync foundations without making local playback depend on the network.
-- Smart metadata cleanup through tags, filename parsing and MusicBrainz, with true Chromaprint / AcoustID fingerprint matching on Windows.
+The current release is a public preview. Download builds only from this repository or the [official Sona website](https://owl-lee.github.io/Sona-Player/?lang=en).
 
-### Technology
+## Technology
 
 | Area | Stack |
 | --- | --- |
 | Client | Flutter / Dart · Windows + Android |
-| State | Riverpod |
+| State management | Riverpod |
 | Local data | SQLite · FFI on Windows, sqflite on mobile |
 | Audio and video | media_kit, audio_service, audio_session |
 | Media import | file_picker, audio_metadata_reader |
-| Cloud foundation | Supabase |
+| Optional sync foundation | Supabase |
 
-### Run locally
+## Build from source
 
 ```powershell
 flutter pub get
@@ -44,84 +45,36 @@ flutter analyze
 flutter run -d windows
 ```
 
-To enable online AcoustID fingerprint lookup, register a free AcoustID application and pass its key at build time:
+Optional AcoustID lookup can be enabled with a free application key:
 
 ```powershell
 flutter build windows --release --dart-define=ACOUSTID_API_KEY=YOUR_APPLICATION_KEY
 ```
 
-Without a key, **AI Identify Track Info** still uses local tags, filename cleanup and the free MusicBrainz public database. Candidate metadata is shown for confirmation and does not silently overwrite user data. Chromaprint `fpcalc` and its LGPL 2.1 license are included under `windows/third_party/chromaprint/`.
+Without an AcoustID key, track identification still uses local tags, filename cleanup and the free MusicBrainz public database. Candidate metadata is presented for confirmation rather than silently overwriting the library.
 
-Windows development requires Developer Mode so Flutter plugins can create symbolic links. Running a built Release package does not require the Flutter SDK.
+## Privacy and product scope
 
-### Documentation
+Sona is not a music distribution service and does not provide copyrighted tracks. Your local files remain on your device unless you explicitly use an optional sync feature. Cloud services enhance the experience; they are not required for local playback.
 
-- [Technical highlights and architecture](docs/architecture/Sona项目技术亮点与讲解.md)
-- [Project handoff](docs/handoff/Sona项目交接文档.md)
-- [Windows continuation handoff (2026-08-18)](docs/handoff/Sona电脑端续开发交接-2026-08-18.md)
-- [Keyboard avoidance and transition guidelines](docs/design/Sona键盘避让与柔和过渡动效规范.md)
-- [Historical technical log](docs/history/Sona-Claude%20技术日志.md)
+## Chinese / 简体中文
 
----
+<details>
+<summary><strong>展开中文介绍 / View Chinese summary</strong></summary>
 
-## 简体中文
+<br>
 
-Sona 不是在线曲库服务：它帮助你导入、整理和播放自己拥有的音乐与 MV，并以液态玻璃、黑胶播放页和可切换皮肤提供沉浸式桌面体验。
+Sona 是一款面向 Windows 和 Android 的本地优先音乐播放器。它用于导入、整理和播放你自己拥有的音乐与 MV，不依赖在线曲库，断网时本地曲库、歌单、收藏、播放队列和记录仍然可用。
 
-> 当前发布的是 `0.4.50` 公开预览版。Windows 提供 64 位便携包，Android 提供 APK；Android 包目前使用开发签名，请只从官网或 GitHub Release 下载。
+主要功能包括：
 
-## 当前能力
+- 音乐与本地 MV 的统一管理和播放；
+- 标签、文件名、MusicBrainz 与可选音频声纹识别；
+- 收藏、歌单、最近播放、听歌排行和播放队列；
+- 液态毛玻璃、黑胶播放页、多套壁纸与主题特效；
+- 简体中文、繁體中文与 English 界面；
+- Windows 桌面端与 Android 窄屏适配。
 
-- 导入单个/多个音乐文件，或递归扫描文件夹；以 SHA-256 和 SQLite 防重复入库。
-- 本地曲库、搜索、收藏、最近播放、歌单、播放队列与听歌排行。
-- 音乐与本地 MV 管理、关联播放及 MV 专区。
-- 黑胶播放页、迷你播放条、音量/随机/循环/播放队列控制。
-- Windows 桌面布局与 Android 窄屏适配；播放器皮肤、自定义背景、头像和歌单封面。
-- 简体中文、繁體中文和 English 界面切换。
-- 云账号和同步基础设施；断网时仍以本地曲库为主，不依赖云端才能播放。
-- 歌曲信息智能校准：先清洗标签和文件名，再查询 MusicBrainz；Windows 可通过 Chromaprint/AcoustID 进行真正的音频声纹匹配。
+[访问中文官网](https://owl-lee.github.io/Sona-Player/) · [下载最新版本](https://github.com/Owl-Lee/Sona-Player/releases/latest) · [提交问题](https://github.com/Owl-Lee/Sona-Player/issues)
 
-## 技术架构
-
-| 领域 | 方案 |
-| --- | --- |
-| 客户端 | Flutter / Dart，Windows + Android |
-| 状态管理 | Riverpod |
-| 本地数据 | SQLite（Windows 使用 FFI，移动端使用 sqflite） |
-| 播放与视频 | media_kit、audio_service、audio_session |
-| 媒体导入 | file_picker、audio_metadata_reader |
-| 云端 | Supabase（账号与同步） |
-
-## 本地运行
-
-```powershell
-flutter pub get
-flutter analyze
-flutter run -d windows
-```
-
-如需启用 AcoustID 声纹联网查询，请先免费注册 AcoustID 应用，然后在构建时传入应用 key：
-
-```powershell
-flutter build windows --release --dart-define=ACOUSTID_API_KEY=你的应用Key
-```
-
-未配置 key 时，“AI 识别歌曲信息”仍会使用本地标签、文件名清洗和免费的 MusicBrainz 公开曲库，不会自动覆盖用户资料；所有候选结果均需用户确认。Chromaprint `fpcalc` 及其 LGPL 2.1 许可证位于 `windows/third_party/chromaprint/`。
-
-Windows 开发环境需要开启开发者模式，以便 Flutter 插件创建符号链接。运行已构建的 Release 程序不需要 Flutter SDK。
-
-## 文档
-
-- [项目技术亮点与讲解](docs/architecture/Sona项目技术亮点与讲解.md)：产品定位、架构与技术讲解。
-- [项目工程交接文档](docs/handoff/Sona项目交接文档.md)：功能范围、数据/同步边界及后续注意事项。
-- [电脑端续开发交接（2026-08-18）](docs/handoff/Sona电脑端续开发交接-2026-08-18.md)：Windows 当前状态与待验证项。
-- [键盘避让与柔和过渡动效规范](docs/design/Sona键盘避让与柔和过渡动效规范.md)：交互和动效约束。
-- [历史技术日志](docs/history/Sona-Claude 技术日志.md)：早期迭代记录。
-
-历史文档中的绝对路径仅用于记录当时环境；以仓库根目录为当前源码基准。
-
-## 版本与备份约定
-
-- 每个完成的功能批次都应提交 Git commit 并推送到 GitHub。
-- 可交付版本创建 Git tag 和 GitHub Release；安装包作为 Release 附件，不提交 `build/` 目录。
-- 私钥、服务端密钥、数据库密码和本地媒体文件不得提交。客户端 publishable key 不等同于服务端密钥。
+</details>
