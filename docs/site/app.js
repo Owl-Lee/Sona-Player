@@ -1,18 +1,38 @@
 const screenshots = {
   home: {
-    src: 'site/assets/screenshots/home.png',
+    src: {
+      zh: 'site/assets/screenshots/home.png',
+      en: 'site/assets/screenshots/home-en.png',
+    },
     zh: { alt: 'Sona 首页真实截图', title: 'Sona · 首页' },
     en: { alt: 'Real screenshot of the Sona home screen', title: 'Sona · Home' },
   },
   library: {
-    src: 'site/assets/screenshots/library.png',
+    src: {
+      zh: 'site/assets/screenshots/library.png',
+      en: 'site/assets/screenshots/library-en.png',
+    },
     zh: { alt: 'Sona 本地曲库真实截图', title: 'Sona · 本地曲库' },
     en: { alt: 'Real screenshot of the Sona local library', title: 'Sona · Library' },
   },
   settings: {
-    src: 'site/assets/screenshots/settings.png',
+    src: {
+      zh: 'site/assets/screenshots/settings.png',
+      en: 'site/assets/screenshots/settings-en.png',
+    },
     zh: { alt: 'Sona 设置页真实截图', title: 'Sona · 设置' },
     en: { alt: 'Real screenshot of Sona settings', title: 'Sona · Settings' },
+  },
+};
+
+const heroScreenshots = {
+  zh: {
+    src: 'site/assets/screenshots/player.png',
+    alt: 'Sona 的沉浸式黑胶播放页，使用青柠软糖主题',
+  },
+  en: {
+    src: 'site/assets/screenshots/player-en.png',
+    alt: 'Sona immersive vinyl player in English using the Lime Candy theme',
   },
 };
 
@@ -131,6 +151,7 @@ const siteMetadata = {
 const header = document.querySelector('[data-header]');
 const showcaseImage = document.querySelector('[data-showcase-image]');
 const showcaseTitle = document.querySelector('[data-shot-title]');
+const heroImage = document.querySelector('[data-hero-image]');
 const tabs = [...document.querySelectorAll('[data-shot]')];
 const languageToggle = document.querySelector('[data-language-toggle]');
 
@@ -167,6 +188,7 @@ const updateShowcaseLanguage = () => {
   const activeKey = tabs.find((tab) => tab.classList.contains('active'))?.dataset.shot || 'home';
   const shot = screenshots[activeKey];
   const copy = shot[currentLanguage];
+  showcaseImage.src = shot.src[currentLanguage];
   showcaseImage.alt = copy.alt;
   showcaseTitle.textContent = copy.title;
 };
@@ -190,6 +212,8 @@ const applyLanguage = (language, persist = true) => {
   languageToggle.textContent = currentLanguage === 'en' ? '中文' : 'EN';
   languageToggle.setAttribute('aria-label', currentLanguage === 'en' ? '切换至中文' : 'Switch to English');
   languageToggle.title = currentLanguage === 'en' ? '切换至中文' : 'Switch to English';
+  heroImage.src = heroScreenshots[currentLanguage].src;
+  heroImage.alt = heroScreenshots[currentLanguage].alt;
   updateShowcaseLanguage();
 
   const url = new URL(window.location.href);
@@ -233,9 +257,9 @@ tabs.forEach((tab) => {
 
     showcaseImage.classList.add('switching');
     window.setTimeout(() => {
-      showcaseImage.src = next.src;
-    showcaseImage.alt = next[currentLanguage].alt;
-    showcaseTitle.textContent = next[currentLanguage].title;
+      showcaseImage.src = next.src[currentLanguage];
+      showcaseImage.alt = next[currentLanguage].alt;
+      showcaseTitle.textContent = next[currentLanguage].title;
       showcaseImage.classList.remove('switching');
     }, 180);
   });
