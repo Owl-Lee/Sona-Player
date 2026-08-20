@@ -1,12 +1,72 @@
 # Sona
 
-> 本地优先、离线可用的私人音乐播放器。面向 Windows 与 Android，数据和音乐文件始终由用户掌握。
+[English](#english) · [简体中文](#简体中文)
 
-Sona 不是在线曲库服务：它帮助你导入、整理和播放自己拥有的音乐与 MV，并以液态玻璃、黑胶播放页和可切换皮肤提供沉浸式桌面体验。
+> 本地优先、离线可用的私人音乐播放器。Local-first, offline-ready music for Windows and Android.
 
-[产品官网](https://owl-lee.github.io/Sona-Player/) · [下载最新版](https://github.com/Owl-Lee/Sona-Player/releases/latest) · [问题反馈](https://github.com/Owl-Lee/Sona-Player/issues)
+[产品官网 / Website](https://owl-lee.github.io/Sona-Player/) · [下载 / Download](https://github.com/Owl-Lee/Sona-Player/releases/latest) · [问题反馈 / Issues](https://github.com/Owl-Lee/Sona-Player/issues)
 
 ![Sona 沉浸式播放页](docs/site/assets/screenshots/player.png)
+
+## English
+
+Sona is a local-first, offline-ready music player for Windows and Android. It is not an online catalog: it helps you import, organize and play music and MVs you already own, with liquid-glass surfaces, an immersive vinyl player and expressive themes.
+
+> The current release is the `0.4.50` public preview. Windows is distributed as a 64-bit portable package and Android as an APK. The Android build currently uses a development signature; download it only from the official website or GitHub Releases.
+
+### Highlights
+
+- Import one or many media files, or scan folders recursively; SHA-256 and SQLite prevent duplicate entries.
+- Local library, search, favorites, recents, playlists, playback queue and listening charts.
+- Unified music and local MV management, linked playback and a dedicated MV area.
+- Vinyl player, mini player, volume, shuffle, repeat and queue controls.
+- Desktop layouts for Windows and narrow-screen adaptation for Android.
+- Simplified Chinese, Traditional Chinese and English interfaces.
+- Optional cloud account and sync foundations without making local playback depend on the network.
+- Smart metadata cleanup through tags, filename parsing and MusicBrainz, with true Chromaprint / AcoustID fingerprint matching on Windows.
+
+### Technology
+
+| Area | Stack |
+| --- | --- |
+| Client | Flutter / Dart · Windows + Android |
+| State | Riverpod |
+| Local data | SQLite · FFI on Windows, sqflite on mobile |
+| Audio and video | media_kit, audio_service, audio_session |
+| Media import | file_picker, audio_metadata_reader |
+| Cloud foundation | Supabase |
+
+### Run locally
+
+```powershell
+flutter pub get
+flutter analyze
+flutter run -d windows
+```
+
+To enable online AcoustID fingerprint lookup, register a free AcoustID application and pass its key at build time:
+
+```powershell
+flutter build windows --release --dart-define=ACOUSTID_API_KEY=YOUR_APPLICATION_KEY
+```
+
+Without a key, **AI Identify Track Info** still uses local tags, filename cleanup and the free MusicBrainz public database. Candidate metadata is shown for confirmation and does not silently overwrite user data. Chromaprint `fpcalc` and its LGPL 2.1 license are included under `windows/third_party/chromaprint/`.
+
+Windows development requires Developer Mode so Flutter plugins can create symbolic links. Running a built Release package does not require the Flutter SDK.
+
+### Documentation
+
+- [Technical highlights and architecture](docs/architecture/Sona项目技术亮点与讲解.md)
+- [Project handoff](docs/handoff/Sona项目交接文档.md)
+- [Windows continuation handoff (2026-08-18)](docs/handoff/Sona电脑端续开发交接-2026-08-18.md)
+- [Keyboard avoidance and transition guidelines](docs/design/Sona键盘避让与柔和过渡动效规范.md)
+- [Historical technical log](docs/history/Sona-Claude%20技术日志.md)
+
+---
+
+## 简体中文
+
+Sona 不是在线曲库服务：它帮助你导入、整理和播放自己拥有的音乐与 MV，并以液态玻璃、黑胶播放页和可切换皮肤提供沉浸式桌面体验。
 
 > 当前发布的是 `0.4.50` 公开预览版。Windows 提供 64 位便携包，Android 提供 APK；Android 包目前使用开发签名，请只从官网或 GitHub Release 下载。
 

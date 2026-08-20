@@ -344,3 +344,31 @@ body {
 .download-card:hover { border-color: rgba(255,85,116,.3); background: linear-gradient(135deg, rgba(255,239,221,.92), rgba(248,232,255,.82)); }
 .platform-icon { color: #fff; background: linear-gradient(135deg, #ff4f82, #ff7e43); }
 .platform-icon.windows i { background: #fff; }
+
+.language-toggle {
+  min-width: 42px;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid rgba(75, 50, 100, .12);
+  border-radius: 13px;
+  color: var(--text);
+  background: rgba(255,255,255,.64);
+  box-shadow: inset 0 1px rgba(255,255,255,.9);
+  font-size: .78rem;
+  font-weight: 800;
+  letter-spacing: .03em;
+  cursor: pointer;
+  transition: transform .2s ease, border-color .2s ease, background .2s ease, box-shadow .2s ease;
+}
+.language-toggle:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255,85,116,.3);
+  background: rgba(255,242,245,.9);
+  box-shadow: 0 10px 24px rgba(255,85,116,.13), inset 0 1px rgba(255,255,255,.92);
+}
+.language-toggle:focus-visible { outline: 3px solid rgba(100,118,255,.28); outline-offset: 2px; }
+
+@media (max-width: 760px) {
+  .header-actions { gap: 8px; }
+  .language-toggle { min-width: 40px; padding: 0 10px; }
+}
