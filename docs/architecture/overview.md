@@ -1,19 +1,19 @@
 # Sona Architecture and Data Flow
 
-> 中文为主，附英文摘要。This document describes Sona's current local-first architecture and the boundaries of optional cloud features.
+**English** · [简体中文](#简体中文) · [Documentation index](../README.md)
 
-## 1. 产品边界
+## 1. Product boundary
 
-Sona 是 Windows 与 Android 上的私人音乐播放器。它管理并播放用户自己拥有的音频和本地 MV，不提供在线版权曲库。设计优先级依次是：
+Sona is a personal music player for Windows and Android. It manages and plays audio and local MVs owned by the user; it does not provide an online copyrighted catalog. Its priorities are:
 
-1. 本地播放可靠；
-2. 曲库数据一致；
-3. 交互明确且可恢复；
-4. 云端与在线识别作为可选增强。
+1. reliable local playback;
+2. consistent library data;
+3. explicit, recoverable interactions;
+4. cloud services and online identification as optional enhancements.
 
-网络断开时，本地曲库、播放队列、歌单、收藏、播放记录和已缓存媒体仍应工作。云端失败只能影响云端操作，不能拖垮播放器主链路。
+When the network is unavailable, the local library, queue, playlists, favorites, history, and cached media must continue to work. A cloud failure may interrupt a cloud action, but must never bring down the playback path.
 
-## 2. 技术结构
+## 2. Technical structure
 
 ```text
 Flutter UI
@@ -36,63 +36,106 @@ Flutter UI
        └─ explicitly selected cloud media
 ```
 
-SQLite 保存歌曲、文件位置、媒体类型、歌单关系、收藏、播放事件和设置。媒体字节保留在用户文件或应用缓存中；结构化数据与大文件不混在同一数据库表里。
+SQLite stores tracks, file locations, media types, playlist relationships, favorites, playback events, and settings. Media bytes stay in user files or application caches; structured records and large media objects are not mixed in the same database table.
 
-## 3. 导入与去重
+## 3. Import and deduplication
 
 ```text
-选择文件或扫描文件夹
-  → 判断音频 / 视频类型
-  → 读取标签、时长和内嵌封面
-  → 清理文件名并生成候选标题/歌手
-  → 计算稳定文件身份
-  → 在 SQLite 中去重并写入
-  → 刷新当前筛选结果与播放入口
+Select files or scan a folder
+  → detect audio / video type
+  → read tags, duration, and embedded artwork
+  → clean the filename and infer title / artist candidates
+  → derive a stable file identity
+  → deduplicate and write to SQLite
+  → refresh the current view and playback entry points
 ```
 
-路径和文件名会改变，因此不能单独作为歌曲身份。内容哈希适合判断完全相同的文件；同一首歌的 MP3、FLAC、现场版和 MV 则应作为不同媒体资源，通过曲目信息或显式配对建立关系。
+Paths and filenames can change, so neither should be the sole identity of a track. A content hash can identify an identical file. Different encodings, live versions, and paired MVs remain separate media resources connected through metadata or an explicit pairing.
 
-## 4. 播放与队列
+## 4. Playback and queues
 
-所有入口——本地曲库、最近播放、收藏、歌单、排行、云端列表——都应向同一个播放协调层提交：
+Every entry point—local library, recents, favorites, playlists, charts, and cloud lists—submits the same set of information to one playback coordinator:
 
-- 当前曲目；
-- 当前入口生成的队列；
-- 队列来源名称；
-- 媒体能力（音频、MV、唱片封面）；
-- 用户选择的播放模式。
+- the selected track;
+- a queue generated from the currently visible list;
+- a human-readable queue source;
+- per-track capabilities such as audio, MV, and artwork;
+- the selected playback mode.
 
-点击新的列表项时，队列必须切换为该列表当时的可见结果，不能继续沿用上一个页面的队列。下一首与上一首先更新当前曲目，再根据新曲目的实际媒体能力决定显示 MV 还是唱片页。界面不能仅根据队列第一首推断后续所有项目的类型。
+Selecting a track in another list must replace the previous queue. Previous/next changes the authoritative current track first, then chooses the MV or vinyl view from that track's actual capabilities. The UI must never infer the whole queue's media type from its first item.
 
-## 5. 歌曲信息识别
+## 5. Metadata identification
 
-识别采用逐层回退：
+Identification uses layered fallback:
 
-1. **媒体标签：** 最快，完全离线，但可能缺失或错误。
-2. **文件名语义：** 清理编号、来源标记、分集编号和下载尾缀，推断歌曲与歌手。
-3. **MusicBrainz：** 用结构化候选补齐规范名称和专辑信息。
-4. **Chromaprint / AcoustID：** 在本地生成声纹，只上传声纹和时长查询，作为困难样本回退。
+1. **Embedded tags:** fastest and fully offline, but possibly missing or incorrect.
+2. **Filename semantics:** removes numbering, source markers, episode suffixes, and download identifiers, then infers title and artist.
+3. **MusicBrainz:** supplies structured candidates for canonical names and albums.
+4. **Chromaprint / AcoustID:** generates a fingerprint locally and submits only the fingerprint and duration as a fallback for difficult tracks.
 
-在线返回的是候选数据，不是绝对真相。低置信度结果应允许预览和确认，批量智能整理不得静默覆盖已经由用户确认的资料。
+Online data is a candidate, not absolute truth. Low-confidence changes should be previewed and confirmed. Batch cleanup must not silently overwrite metadata already confirmed by the user.
 
-## 6. 云同步边界
+## 6. Cloud boundary
 
-云同步是增强层：
+Cloud sync is an enhancement layer:
 
-- 本地写入先完成，再尝试同步；
-- 网络请求必须可取消、去重、超时并允许重试；
-- 连续点击同一云文件不得并发创建无限下载或播放任务；
-- 旧请求完成时不得覆盖更新的用户选择；
-- 删除云副本不能删除本地原文件，除非用户明确选择本地删除。
+- complete local writes before attempting sync;
+- make requests cancellable, deduplicated, bounded by timeouts, and retryable;
+- repeated clicks on one cloud item must not create unlimited downloads or playback tasks;
+- stale responses must not overwrite a newer selection;
+- deleting a cloud copy must not delete the local file unless the user explicitly chooses local deletion.
 
-账号、收藏、歌单和播放事件属于结构化数据；音频与 MV 属于大对象。实际部署必须使用最小权限，并且绝不能把管理员密钥或数据库密码写进客户端。
+Account data, favorites, playlists, and playback events are structured records; audio and MVs are large objects. Production deployments must use least privilege and must never ship administrator keys or database passwords in the client.
 
-## 7. 状态一致性原则
+## 7. State consistency
+
+- The player has one authoritative current track and one authoritative queue.
+- Pages render shared state instead of owning a second long-lived playback state.
+- Track deletion also removes playlist, favorite, chart-cache, and queue references.
+- Before committing an asynchronous result, compare its request generation with the current selection and discard stale work.
+- User-facing errors explain the next useful action without exposing database exceptions or service configuration.
+
+---
+
+## 简体中文
+
+**[English](#sona-architecture-and-data-flow)** · 简体中文 · [文档索引](../README.md#简体中文)
+
+### 1. 产品边界
+
+Sona 是 Windows 与 Android 上的私人音乐播放器。它管理并播放用户自己拥有的音频和本地 MV，不提供在线版权曲库。设计优先级依次是：
+
+1. 本地播放可靠；
+2. 曲库数据一致；
+3. 交互明确且可恢复；
+4. 云端与在线识别作为可选增强。
+
+网络断开时，本地曲库、播放队列、歌单、收藏、播放记录和已缓存媒体仍应工作。云端失败只能影响云端操作，不能拖垮播放器主链路。
+
+### 2. 技术结构
+
+整体结构与上方架构图一致：Flutter UI 通过 Riverpod 管理应用状态，由单一播放协调层处理音频、MV、队列、模式和进度；SQLite 保存结构化曲库数据，媒体文件保留在用户文件或缓存中；识别与云同步均为可回退的增强层。
+
+### 3. 导入与去重
+
+导入流程依次判断媒体类型，读取标签、时长和封面，清理文件名，生成稳定文件身份，在 SQLite 中去重写入，最后刷新当前列表和播放入口。路径和文件名可能改变，因此不能单独作为歌曲身份。内容哈希适合识别完全相同的文件；不同编码、现场版和配对 MV 则作为独立媒体资源，通过资料或显式配对建立关系。
+
+### 4. 播放与队列
+
+本地曲库、最近播放、收藏、歌单、排行和云端列表都向同一个播放协调层提交当前曲目、当前可见列表生成的队列、队列来源、逐曲媒体能力和播放模式。点击另一个列表中的歌曲时必须替换旧队列。上一首和下一首先更新权威当前曲目，再按该曲目的实际能力决定显示 MV 或唱片页，不能用队列第一首推断整列类型。
+
+### 5. 歌曲信息识别
+
+识别按层回退：优先读取本地媒体标签，再解析文件名语义；必要时查询 MusicBrainz；困难样本可在本地生成 Chromaprint 声纹，并把声纹与时长交给 AcoustID 查询。在线结果只是候选而非绝对真相，低置信度修改应预览确认，批量整理不得静默覆盖用户已经确认的资料。
+
+### 6. 云同步边界
+
+云同步是增强层。本地写入先完成，再尝试同步；请求必须可取消、去重、超时和重试；重复点击不得无限创建任务；过期响应不得覆盖新选择；删除云副本不能连带删除本地文件，除非用户明确选择本地删除。实际部署遵循最小权限，管理员密钥和数据库密码绝不能进入客户端。
+
+### 7. 状态一致性原则
 
 - 播放器只有一个权威当前曲目和一个权威队列。
-- 页面只呈现状态，不复制一份长期独立的播放状态。
-- 删除曲目后同步清理歌单引用、收藏、排行缓存和队列引用。
-- 请求结果提交前检查请求代次与当前选择，丢弃过期结果。
-- 失败提示描述用户能采取的下一步，不直接暴露数据库异常或服务配置。
-
-[Back to documentation index](../README.md)
+- 页面只呈现共享状态，不复制长期独立的播放状态。
+- 删除曲目时同步清理歌单、收藏、排行缓存和队列引用。
+- 异步结果写入前检查请求代次并丢弃过期结果。
+- 错误提示说明用户能采取的下一步，不暴露数据库异常或服务配置。
