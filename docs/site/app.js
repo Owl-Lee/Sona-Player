@@ -176,7 +176,7 @@ const savedLanguage = (() => {
   if (requested === 'en' || requested === 'zh') return requested;
   try { return localStorage.getItem('sona-site-language'); } catch { return null; }
 })();
-let currentLanguage = savedLanguage === 'en' ? 'en' : 'zh';
+let currentLanguage = savedLanguage === 'zh' ? 'zh' : 'en';
 
 const replaceText = (node, value) => {
   const leading = node.nodeValue.match(/^\s*/)?.[0] ?? '';
