@@ -35,7 +35,7 @@ body {
 
 a { color: inherit; text-decoration: none; }
 button { font: inherit; }
-img { display: block; max-width: 100%; }
+img { display: block; max-width: 100%; height: auto; }
 .skip-link { position: fixed; top: -5rem; left: 1rem; z-index: 100; padding: .8rem 1rem; border-radius: 12px; background: var(--accent); color: #10150b; }
 .skip-link:focus { top: 1rem; }
 .ambient { position: fixed; z-index: -1; border-radius: 999px; filter: blur(100px); opacity: .28; pointer-events: none; }
@@ -99,7 +99,7 @@ h1 em { color: var(--accent); font-style: normal; }
 .traffic { width: 8px; height: 8px; border-radius: 50%; opacity: .85; }
 .traffic.red { background: #ff6d69; }.traffic.amber { background: #f7c453; }.traffic.green { background: #61cd78; }
 .window-title { margin-left: 8px; color: #7f887a; font-size: .68rem; }
-.app-frame-hero img { aspect-ratio: 1346 / 813; object-fit: cover; }
+.app-frame-hero img { width: 100%; height: auto; object-fit: contain; }
 .floating-note { position: absolute; display: grid; grid-template-columns: 38px 1fr; align-items: center; min-width: 170px; padding: 12px 14px; border: 1px solid rgba(255,255,255,.18); border-radius: 17px; background: rgba(35,42,31,.75); box-shadow: 0 18px 42px rgba(0,0,0,.3); backdrop-filter: blur(20px); }
 .floating-note span { grid-row: 1 / 3; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 10px; color: #1a2113; background: var(--accent); font-weight: 900; }
 .floating-note b { font-size: .8rem; }.floating-note small { color: var(--muted); font-size: .68rem; }
@@ -142,7 +142,7 @@ h1 em { color: var(--accent); font-style: normal; }
 .showcase-tab { padding: 10px 18px; border: 0; border-radius: 11px; background: transparent; color: var(--muted); cursor: pointer; }
 .showcase-tab.active { background: var(--accent); color: #17200e; font-weight: 760; box-shadow: inset 0 1px rgba(255,255,255,.5); }
 .showcase-frame { border-radius: 30px; }
-.showcase-frame img { width: 100%; aspect-ratio: 1098 / 769; object-fit: cover; transition: opacity .22s ease, transform .22s ease; }
+.showcase-frame img { width: 100%; height: auto; object-fit: contain; transition: opacity .22s ease, transform .22s ease; }
 .showcase-frame img.switching { opacity: .15; transform: scale(.995); }
 .experience-notes { display: flex; justify-content: center; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
 .experience-notes span { padding: 8px 13px; border: 1px solid var(--line); border-radius: 99px; color: var(--muted); font-size: .76rem; }
