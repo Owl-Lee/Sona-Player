@@ -1,0 +1,78 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../application/player_controller.dart';
+
+class PlaybackModeButton extends ConsumerWidget {
+  const PlaybackModeButton({
+    super.key,
+    this.enabled = true,
+    this.color,
+    this.activeColor,
+    this.compact = false,
+    this.iconSize,
+  });
+
+  final bool enabled;
+  final Color? color;
+  final Color? activeColor;
+  final bool compact;
+  final double? iconSize;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mode = ref.watch(playerControllerProvider).playbackMode;
+    final controller = ref.read(playerControllerProvider.notifier);
+    final label = switch (mode) {
+      VaultPlaybackMode.loop => '列表循环',
+      VaultPlaybackMode.one => '单曲循环',
+      VaultPlaybackMode.shuffle => '随机播放',
+    };
+    final icon = switch (mode) {
+      VaultPlaybackMode.loop => Icons.repeat_rounded,
+      VaultPlaybackMode.one => Icons.repeat_one_rounded,
+      VaultPlaybackMode.shuffle => Icons.shuffle_rounded,
+    };
+    return PopupMenuButton<VaultPlaybackMode>(
+      enabled: enabled,
+      tooltip: label,
+      onSelected: controller.setPlaybackMode,
+      itemBuilder: (_) => const [
+        PopupMenuItem(
+          value: VaultPlaybackMode.loop,
+          child: ListTile(
+            leading: Icon(Icons.repeat_rounded),
+            title: Text('列表循环'),
+            dense: true,
+          ),
+        ),
+        PopupMenuItem(
+          value: VaultPlaybackMode.one,
+          child: ListTile(
+            leading: Icon(Icons.repeat_one_rounded),
+            title: Text('单曲循环'),
+            dense: true,
+          ),
+        ),
+        PopupMenuItem(
+          value: VaultPlaybackMode.shuffle,
+          child: ListTile(
+            leading: Icon(Icons.shuffle_rounded),
+            title: Text('随机播放'),
+            dense: true,
+          ),
+        ),
+      ],
+      child: Padding(
+        padding: EdgeInsets.all(compact ? 6 : 12),
+        child: Icon(
+          icon,
+          size: iconSize ?? (compact ? 28 : 31),
+          color: mode == VaultPlaybackMode.loop
+              ? color
+              : (activeColor ?? color),
+        ),
+      ),
+    );
+  }
+}
