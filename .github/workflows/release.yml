@@ -160,6 +160,21 @@ jobs:
         run: |
           choco install innosetup --version=6.7.1 --yes --no-progress --limit-output
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          # Chocolatey's Inno Setup package omits contributed translations.
+          # Fetch the Simplified Chinese catalog from the matching immutable
+          # upstream 6.7.1 source commit and verify it before compilation.
+          $languageDirectory = 'C:\Program Files (x86)\Inno Setup 6\Languages'
+          $languageFile = Join-Path $languageDirectory 'ChineseSimplified.isl'
+          New-Item -ItemType Directory -Force -Path $languageDirectory | Out-Null
+          Invoke-WebRequest `
+            -Uri 'https://raw.githubusercontent.com/jrsoftware/issrc/cfdf48923178df4b4f040e038b423aa555a61ffc/Files/Languages/Unofficial/ChineseSimplified.isl' `
+            -OutFile $languageFile
+          $languageHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $languageFile).Hash
+          if ($languageHash -ne '7D544B9BB1D142CFA11F2E5D3CC8ABE2E55F8E066C5124E3772675AA236E1278') {
+            throw "Unexpected ChineseSimplified.isl SHA-256: $languageHash"
+          }
+
           & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' installer/windows/Sona.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Generate checksums
