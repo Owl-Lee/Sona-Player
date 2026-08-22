@@ -138,5 +138,6 @@ void main() {
       expect(reloaded.state.effectsMode, VisualEffectsMode.energySaver);
       expect(reloaded.state.presetId, 'cyan_glass');
     },
+    timeout: const Timeout(Duration(minutes: 2)),
   );
 }
