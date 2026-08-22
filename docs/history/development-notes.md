@@ -54,6 +54,16 @@ These failures drove request generations, cancellation and deduplication, one au
 - Published curated bilingual architecture, design, testing, and maintenance documents.
 - Distributed Windows ZIP and Android APK public-preview builds through GitHub Releases.
 
+## 0.5.0: safety, control, and release engineering
+
+- Added a 30-day cloud recycle bin, immediate undo, restore, and owner-only permanent deletion with orphan-media cleanup.
+- Added streamed, checksummed complete `.sonabackup` export and cold-start restore, plus lightweight same-device automatic recovery snapshots.
+- Made metadata reversible: users can edit title, artist, album, and artwork, inspect identification/edit history, and safely undo revisions.
+- Serialized playback transport, media-source changes, destructive cloud work, and backup staging; deterministic stress tests cover rapid input, failures, deletion, and queue replacement.
+- Added Full effects, Energy saver, and Motion off modes that scale animation cadence, particles, live blur, image decoding, vinyl motion, and Windows video output.
+- Moved Android distribution to a permanent RSA 4096 signing identity and added strict CI/Release checks for version, certificate, package structure, secrets, hashes, and exact public assets.
+- Published a bilingual, responsive website, Windows installer and portable archive, Android APK, SHA-256 sidecars, release notes, and manual hardware acceptance guidance.
+
 ## Current direction
 
 The public preview prioritizes stability, media-state consistency, complete localization, and recoverable data. Lyrics, deeper identification, cross-device sync, and additional platforms are future enhancements and must not weaken offline playback.
@@ -108,6 +118,16 @@ The public preview prioritizes stability, media-state consistency, complete loca
 - README 采用英文优先、完整中文同页展示。
 - 公开文档以完整双语保留架构、设计、测试和维护知识。
 - Windows ZIP 与 Android APK 通过 GitHub Releases 提供公开预览下载。
+
+### 0.5.0：数据安全、可控性与发布工程
+
+- 增加 30 天云端回收站、即时撤销、恢复和仅所有者可执行的永久删除，并安全清理孤立云媒体。
+- 增加流式、带完整校验的 `.sonabackup` 导出与冷启动恢复，以及用于同设备故障恢复的轻量自动快照。
+- 歌曲资料支持手动编辑歌名、歌手、专辑和封面；识别与编辑历史可查看并安全逐步撤销。
+- 播放控制、媒体源变化、云端破坏性操作和备份 staging 均串行化；确定性压力测试覆盖快速输入、失败注入、删除和队列换源。
+- 新增完整特效、节能特效、关闭动态特效三档，联动动画帧率、粒子、实时模糊、图片解码、唱片动画和 Windows 视频输出。
+- Android 采用永久 RSA 4096 签名；CI/Release 严格校验版本、证书、包结构、敏感信息、哈希和精确公开附件。
+- 发布英文优先、完整中英双语的响应式官网，以及 Windows 安装器、便携包、Android APK、SHA-256 校验文件、版本说明和人工硬件验收指南。
 
 ### 当前方向
 

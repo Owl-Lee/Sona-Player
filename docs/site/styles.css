@@ -176,7 +176,7 @@ h1 em { color: var(--accent); font-style: normal; }
 .download-alternative a:hover { color: var(--accent); }
 .platform-icon { display: grid; place-items: center; width: 58px; height: 58px; border-radius: 18px; background: var(--accent); color: #19210f; }
 .platform-icon.windows { grid-template-columns: 1fr 1fr; gap: 3px; padding: 15px; }.platform-icon.windows i { width: 12px; height: 12px; background: #18210f; }
-.platform-icon.android { font-size: 1.8rem; }
+.platform-icon.android .android-mark { width: 35px; height: 35px; fill: currentColor; }
 .release-note { max-width: 720px; margin: 24px auto 0; color: #727b6f; font-size: .76rem; }
 
 .site-footer { width: min(1180px, calc(100% - 40px)); margin: 0 auto; padding: 32px 0 42px; display: grid; grid-template-columns: 1fr auto 1fr; gap: 24px; align-items: center; border-top: 1px solid var(--line); color: #778074; font-size: .78rem; }
