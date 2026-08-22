@@ -143,43 +143,50 @@ void main() {
     expect((await database.getTracks()).single.title, '外部的新名称');
   });
 
-  test('seeded edit and undo stack restores every exact revision', () async {
-    final original = (await database.insertTrack(_track()))!;
-    final expectedTitles = <String>[original.title];
-    final random = Random(0x5A17);
+  test(
+    'seeded edit and undo stack restores every exact revision',
+    () async {
+      final original = (await database.insertTrack(_track()))!;
+      final expectedTitles = <String>[original.title];
+      final random = Random(0x5A17);
 
-    for (var index = 0; index < 120; index++) {
-      final title = 'Revision $index-${random.nextInt(1 << 20)}';
-      final revision = await database.updateTrackMetadataWithHistory(
-        original.id!,
-        title: title,
-        artist: 'Artist $index',
-        album: 'Album ${index % 9}',
-        artworkPath: index.isEven ? 'C:/covers/$index.jpg' : null,
-        changeKind: index.isEven ? 'manual' : 'identification',
-        source: index.isEven ? 'stress edit' : 'stress fingerprint',
-      );
-      expect(revision, isNotNull);
-      expectedTitles.add(title);
-    }
+      for (var index = 0; index < 120; index++) {
+        final title = 'Revision $index-${random.nextInt(1 << 20)}';
+        final revision = await database.updateTrackMetadataWithHistory(
+          original.id!,
+          title: title,
+          artist: 'Artist $index',
+          album: 'Album ${index % 9}',
+          artworkPath: index.isEven ? 'C:/covers/$index.jpg' : null,
+          changeKind: index.isEven ? 'manual' : 'identification',
+          source: index.isEven ? 'stress edit' : 'stress fingerprint',
+        );
+        expect(revision, isNotNull);
+        expectedTitles.add(title);
+      }
 
-    for (var index = 119; index >= 0; index--) {
-      final restored = await database.undoLatestTrackMetadataRevision(
-        original.id!,
+      for (var index = 119; index >= 0; index--) {
+        final restored = await database.undoLatestTrackMetadataRevision(
+          original.id!,
+        );
+        expect(restored, isNotNull);
+        expect(restored!.title, expectedTitles[index]);
+      }
+      expect(
+        await database.undoLatestTrackMetadataRevision(original.id!),
+        isNull,
       );
-      expect(restored, isNotNull);
-      expect(restored!.title, expectedTitles[index]);
-    }
-    expect(
-      await database.undoLatestTrackMetadataRevision(original.id!),
-      isNull,
-    );
-    final history = await database.getTrackMetadataHistory(original.id!);
-    // The persistence stack keeps every revision for undo. The UI-facing
-    // query intentionally returns only its newest bounded page.
-    expect(history, hasLength(50));
-    expect(history.every((revision) => revision.isReverted), isTrue);
-  });
+      final history = await database.getTrackMetadataHistory(original.id!);
+      // The persistence stack keeps every revision for undo. The UI-facing
+      // query intentionally returns only its newest bounded page.
+      expect(history, hasLength(50));
+      expect(history.every((revision) => revision.isReverted), isTrue);
+    },
+    // The stress case deliberately performs 240 serialized SQLite
+    // transactions. Shared CI runners can exceed the package's 30 second
+    // default while other database stress tests are executing in parallel.
+    timeout: const Timeout(Duration(minutes: 2)),
+  );
 
   test(
     'version 7 database with artwork column upgrades idempotently',

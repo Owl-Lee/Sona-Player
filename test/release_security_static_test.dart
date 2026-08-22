@@ -17,6 +17,19 @@ void main() {
       expect(workflow, contains(r'-Tag $env:RELEASE_TAG'));
     });
 
+    test('installer version metadata is normalized before comparison', () {
+      final gate = _read('tool/release_gate.ps1');
+      expect(
+        gate,
+        contains(r'$setupVersion = $setupVersionRaw.Trim()'),
+        reason: 'Inno Setup pads ProductVersion with trailing spaces',
+      );
+      expect(
+        gate.indexOf(r'$setupVersion = $setupVersionRaw.Trim()'),
+        lessThan(gate.indexOf(r'$setupVersion -ceq $version')),
+      );
+    });
+
     test('Android system backup and device transfer are disabled', () {
       final manifest = _read('android/app/src/main/AndroidManifest.xml');
       final legacyRules = _read(
