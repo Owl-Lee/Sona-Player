@@ -923,16 +923,47 @@ class _DesktopSidebarState extends ConsumerState<_DesktopSidebar> {
                                       IconButton(
                                         tooltip: context.tr('选择常用歌单'),
                                         onPressed: onConfigurePlaylists,
+                                        style: IconButton.styleFrom(
+                                          foregroundColor: mutedForeground,
+                                          backgroundColor: mutedForeground
+                                              .withValues(alpha: 0.12),
+                                          side: BorderSide(
+                                            color: mutedForeground.withValues(
+                                              alpha: 0.24,
+                                            ),
+                                          ),
+                                          minimumSize: const Size.square(30),
+                                          maximumSize: const Size.square(30),
+                                          padding: EdgeInsets.zero,
+                                          tapTargetSize:
+                                              MaterialTapTargetSize.shrinkWrap,
+                                        ),
                                         icon: const Icon(
                                           Icons.tune_rounded,
                                           size: 17,
                                         ),
                                       ),
+                                      const SizedBox(width: 5),
                                       IconButton(
                                         tooltip: context.tr(
                                           playlistsExpanded ? '折叠' : '展开',
                                         ),
                                         onPressed: onTogglePlaylists,
+                                        style: IconButton.styleFrom(
+                                          foregroundColor: mutedForeground,
+                                          backgroundColor: mutedForeground
+                                              .withValues(alpha: 0.12),
+                                          side: BorderSide(
+                                            color: mutedForeground.withValues(
+                                              alpha: 0.24,
+                                            ),
+                                          ),
+                                          minimumSize: const Size.square(30),
+                                          maximumSize: const Size.square(30),
+                                          padding: EdgeInsets.zero,
+                                          tapTargetSize:
+                                              MaterialTapTargetSize.shrinkWrap,
+                                        ),
                                         icon: Icon(
                                           playlistsExpanded
                                               ? Icons.expand_less_rounded
