@@ -2,7 +2,7 @@
 
 > A local-first, offline-ready music player for Windows and Android.
 
-**English** · [简体中文](#简体中文) · [Website](https://owl-lee.github.io/Sona-Player/?lang=en) · [Download](https://github.com/Owl-Lee/Sona-Player/releases/latest) · [Documentation](docs/README.md) · [Report an issue](https://github.com/Owl-Lee/Sona-Player/issues)
+**English** · [简体中文](#简体中文) · [Website](https://sona.yanbaoli.me/?lang=en) · [Download](https://github.com/Owl-Lee/Sona-Player/releases/latest) · [0.4.51 release notes](docs/releases/0.4.51-preview.1.md) · [Documentation](docs/README.md) · [Report an issue](https://github.com/Owl-Lee/Sona-Player/issues)
 
 ![Sona immersive vinyl player in English](docs/site/assets/screenshots/player-en.png)
 
@@ -22,9 +22,11 @@ Sona is made for people who keep their own music files. Import, organize and pla
 | Platform | Package | Notes |
 | --- | --- | --- |
 | Windows 10 / 11 | [Download ZIP](https://github.com/Owl-Lee/Sona-Player/releases/latest/download/Sona-Windows-x64.zip) | 64-bit portable build |
-| Android | [Download APK](https://github.com/Owl-Lee/Sona-Player/releases/latest/download/Sona-Android.apk) | Direct install; development-signed preview |
+| Android | [Download APK](https://github.com/Owl-Lee/Sona-Player/releases/latest/download/Sona-Android.apk) | Direct install; permanently signed preview |
 
-The current release is a public preview. Download builds only from this repository or the [official Sona website](https://owl-lee.github.io/Sona-Player/?lang=en).
+The current release is a public preview. Download builds only from this repository or the [official Sona website](https://sona.yanbaoli.me/?lang=en). Android builds from 0.4.51 onward use Sona's permanent release certificate.
+
+> **One-time Android upgrade notice:** 0.4.50 used a development certificate and cannot be updated in place. Sync or back up anything important, uninstall 0.4.50 once, then install 0.4.51. Uninstalling clears Sona's app-local database and settings; music files stored outside the app remain untouched. Windows builds are not yet Authenticode-signed, so Windows may show a SmartScreen / Unknown publisher warning.
 
 ## How identification works
 
@@ -84,7 +86,7 @@ Sona is not a music distribution service and does not provide copyrighted tracks
 
 > 一款面向 Windows 与 Android 的本地优先、离线可用音乐播放器。
 
-[中文网站](https://owl-lee.github.io/Sona-Player/) · [下载最新版本](https://github.com/Owl-Lee/Sona-Player/releases/latest) · [项目文档](docs/README.md) · [提交问题](https://github.com/Owl-Lee/Sona-Player/issues) · [返回英文](#sona)
+[中文网站](https://sona.yanbaoli.me/) · [下载最新版本](https://github.com/Owl-Lee/Sona-Player/releases/latest) · [0.4.51 发布说明](docs/releases/0.4.51-preview.1.md#简体中文) · [项目文档](docs/README.md) · [提交问题](https://github.com/Owl-Lee/Sona-Player/issues) · [返回英文](#sona)
 
 ![Sona 简体中文沉浸式黑胶播放页](docs/site/assets/screenshots/player.png)
 
@@ -104,9 +106,11 @@ Sona 面向拥有自己音乐文件的用户。它可以导入、整理并播放
 | 平台 | 安装包 | 说明 |
 | --- | --- | --- |
 | Windows 10 / 11 | [下载 ZIP](https://github.com/Owl-Lee/Sona-Player/releases/latest/download/Sona-Windows-x64.zip) | 64 位便携版 |
-| Android | [下载 APK](https://github.com/Owl-Lee/Sona-Player/releases/latest/download/Sona-Android.apk) | 直接安装；公开预览版使用开发签名 |
+| Android | [下载 APK](https://github.com/Owl-Lee/Sona-Player/releases/latest/download/Sona-Android.apk) | 直接安装；使用永久发布签名 |
 
-当前版本属于公开预览。请只从本仓库或 [Sona 官方网站](https://owl-lee.github.io/Sona-Player/)下载安装包。
+当前版本属于公开预览。请只从本仓库或 [Sona 官方网站](https://sona.yanbaoli.me/)下载安装包。自 0.4.51 起，Android 版本使用 Sona 的永久发布证书。
+
+> **Android 一次性升级提醒：**0.4.50 使用开发证书，无法直接覆盖升级。请先同步或备份重要内容，卸载 0.4.50 一次，再安装 0.4.51。卸载会清除 Sona 的应用内数据库和设置，但不会删除存放在应用外部的音乐文件。Windows 版本暂未使用 Authenticode 代码签名，因此系统可能显示 SmartScreen 或“未知发布者”提示。
 
 ### 歌曲信息识别逻辑
 

@@ -1,22 +1,36 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../application/appearance_controller.dart';
 import 'image_crop_dialog.dart';
 
+class AppearancePickerSelection {
+  const AppearancePickerSelection.preset(this.presetId)
+    : customBackground = null;
+
+  const AppearancePickerSelection.custom(this.customBackground)
+    : presetId = null;
+
+  final String? presetId;
+  final CustomBackground? customBackground;
+}
+
 class AppearancePicker extends ConsumerWidget {
   const AppearancePicker({
     super.key,
     this.compact = false,
     this.scrollable = false,
+    this.onSelectionRequested,
     this.onSelectionComplete,
   });
 
   final bool compact;
   final bool scrollable;
+  final ValueChanged<AppearancePickerSelection>? onSelectionRequested;
   final VoidCallback? onSelectionComplete;
 
   @override
@@ -38,70 +52,91 @@ class AppearancePicker extends ConsumerWidget {
                   .clamp(3, 8)
                   .toInt();
         final tileWidth = (constraints.maxWidth - ((count - 1) * gap)) / count;
-        return GridView.count(
+        final childAspectRatio = tileWidth >= 210 ? 1.52 : 1.45;
+        final pixelRatio = MediaQuery.devicePixelRatioOf(context);
+        final previewCacheWidth = (tileWidth * pixelRatio).ceil().clamp(
+          180,
+          512,
+        );
+        final previewCacheHeight = (previewCacheWidth / childAspectRatio)
+            .ceil()
+            .clamp(120, 384);
+        final customBackgrounds = appearance.customBackgrounds;
+        final itemCount =
+            backgroundPresets.length + customBackgrounds.length + 1;
+        return GridView.builder(
           shrinkWrap: !scrollable,
           physics: scrollable
               ? const BouncingScrollPhysics()
               : const NeverScrollableScrollPhysics(),
-          crossAxisCount: count,
-          mainAxisSpacing: gap,
-          crossAxisSpacing: gap,
-          // Preserve the visual proportions on compact windows, but allow a
-          // little more breathing room as desktop cards scale up.
-          childAspectRatio: tileWidth >= 210 ? 1.52 : 1.45,
-          children: [
-            for (final preset in backgroundPresets)
-              _BackgroundTile(
+          // Do not ask Flutter to decode the next several rows of large files
+          // while the modal sheet itself is still animating into view.
+          scrollCacheExtent: scrollable
+              ? const ScrollCacheExtent.pixels(0)
+              : null,
+          itemCount: itemCount,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: count,
+            mainAxisSpacing: gap,
+            crossAxisSpacing: gap,
+            // Preserve the visual proportions on compact windows, but allow a
+            // little more breathing room as desktop cards scale up.
+            childAspectRatio: childAspectRatio,
+          ),
+          itemBuilder: (context, index) {
+            if (index < backgroundPresets.length) {
+              final preset = backgroundPresets[index];
+              return _BackgroundTile(
                 label: preset.name,
                 selected:
                     !appearance.usesCustom && appearance.presetId == preset.id,
-                image: _presetImage(preset, useDesktopThumbnails),
+                image: _presetImage(
+                  preset,
+                  useDesktopThumbnails,
+                  cacheWidth: previewCacheWidth,
+                  cacheHeight: previewCacheHeight,
+                ),
                 fallbackColors: preset.fallbackColors,
                 onTap: () async {
-                  // In the player this closes the picker before the expensive
-                  // full-screen composition changes.  Keeping the outgoing
-                  // sheet, its grid thumbnails and a new wallpaper alive in
-                  // the same transition was the main visible hitch.
-                  if (onSelectionComplete != null) {
-                    onSelectionComplete!.call();
-                    await Future<void>.delayed(
-                      const Duration(milliseconds: 180),
-                    );
+                  final request = onSelectionRequested;
+                  if (request != null) {
+                    request(AppearancePickerSelection.preset(preset.id));
+                    return;
                   }
                   await ref
                       .read(appearanceControllerProvider.notifier)
                       .selectPreset(preset.id);
                 },
-              ),
-            for (
-              var index = 0;
-              index < appearance.customBackgrounds.length;
-              index++
-            )
-              _BackgroundTile(
-                label: '我的背景 ${index + 1}',
+              );
+            }
+
+            final customIndex = index - backgroundPresets.length;
+            if (customIndex < customBackgrounds.length) {
+              final background = customBackgrounds[customIndex];
+              return _BackgroundTile(
+                label: '我的背景 ${customIndex + 1}',
                 selected:
                     appearance.usesCustom &&
-                    appearance.customBackgroundPath ==
-                        appearance.customBackgrounds[index].path,
-                image: FileImage(
-                  File(appearance.customBackgrounds[index].path),
+                    appearance.customBackgroundPath == background.path,
+                image: ResizeImage.resizeIfNeeded(
+                  previewCacheWidth,
+                  previewCacheHeight,
+                  FileImage(File(background.path)),
                 ),
                 onTap: () async {
-                  if (onSelectionComplete != null) {
-                    onSelectionComplete!.call();
-                    await Future<void>.delayed(
-                      const Duration(milliseconds: 180),
-                    );
+                  final request = onSelectionRequested;
+                  if (request != null) {
+                    request(AppearancePickerSelection.custom(background));
+                    return;
                   }
                   await ref
                       .read(appearanceControllerProvider.notifier)
-                      .selectCustomBackground(
-                        appearance.customBackgrounds[index],
-                      );
+                      .selectCustomBackground(background);
                 },
-              ),
-            _ImportTile(
+              );
+            }
+
+            return _ImportTile(
               onTap: () async {
                 final bytes = await ref
                     .read(appearanceControllerProvider.notifier)
@@ -123,8 +158,8 @@ class AppearancePicker extends ConsumerWidget {
                     .saveCustomBackground(cropped);
                 if (context.mounted) onSelectionComplete?.call();
               },
-            ),
-          ],
+            );
+          },
         );
       },
     );
@@ -133,12 +168,19 @@ class AppearancePicker extends ConsumerWidget {
 
 ImageProvider? _presetImage(
   BackgroundPreset preset,
-  bool useDesktopThumbnails,
-) {
+  bool useDesktopThumbnails, {
+  required int cacheWidth,
+  required int cacheHeight,
+}) {
   final assetPath = useDesktopThumbnails
       ? preset.desktopAssetPath ?? preset.assetPath
       : preset.assetPath;
-  return assetPath == null ? null : AssetImage(assetPath);
+  if (assetPath == null) return null;
+  return ResizeImage.resizeIfNeeded(
+    cacheWidth,
+    cacheHeight,
+    AssetImage(assetPath),
+  );
 }
 
 class _BackgroundTile extends StatelessWidget {
@@ -158,74 +200,82 @@ class _BackgroundTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.all(3),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: selected ? AppColors.accent : AppColors.outline,
-              width: selected ? 2 : 1,
+    return RepaintBoundary(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: selected ? AppColors.accent : AppColors.outline,
+                width: selected ? 2 : 1,
+              ),
             ),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: fallbackColors,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: fallbackColors,
+                      ),
                     ),
                   ),
-                ),
-                if (image != null) Image(image: image!, fit: BoxFit.cover),
-                const DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [Colors.transparent, Color(0xB8000000)],
+                  if (image != null)
+                    Image(
+                      image: image!,
+                      fit: BoxFit.cover,
+                      filterQuality: FilterQuality.low,
+                      gaplessPlayback: true,
+                    ),
+                  const DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Colors.transparent, Color(0xB8000000)],
+                      ),
                     ),
                   ),
-                ),
-                Positioned(
-                  left: 9,
-                  right: 9,
-                  bottom: 8,
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
+                  Positioned(
+                    left: 9,
+                    right: 9,
+                    bottom: 8,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
                         ),
-                      ),
-                      if (selected)
-                        const Icon(
-                          Icons.check_circle_rounded,
-                          color: Colors.white,
-                          size: 17,
-                        ),
-                    ],
+                        if (selected)
+                          const Icon(
+                            Icons.check_circle_rounded,
+                            color: Colors.white,
+                            size: 17,
+                          ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

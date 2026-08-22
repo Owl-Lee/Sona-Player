@@ -186,18 +186,22 @@ class CloudSyncController extends StateNotifier<CloudSyncState> {
     try {
       final spaceId = await _spaceId(client, user.id);
       // A track id alone is not sufficient for a shared space operation.
-      await client
-          .from('cloud_tracks')
-          .delete()
-          .eq('id', track.id)
-          .eq('space_id', spaceId);
+      await _withCloudTimeout(
+        client
+            .from('cloud_tracks')
+            .delete()
+            .eq('id', track.id)
+            .eq('space_id', spaceId),
+      );
       final objects = [
         track.mediaObjectPath,
         track.videoObjectPath,
       ].whereType<String>().where((value) => value.isNotEmpty).toList();
       if (objects.isNotEmpty) {
         try {
-          await client.storage.from('sona-media').remove(objects);
+          await _withCloudTimeout(
+            client.storage.from('sona-media').remove(objects),
+          );
         } catch (_) {
           // Database deletion is authoritative; a failed storage cleanup is
           // harmless and can be cleaned up by the storage lifecycle policy.

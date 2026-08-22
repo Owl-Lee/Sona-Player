@@ -533,7 +533,9 @@ class _RecentList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final current = ref.watch(playerControllerProvider).currentTrack;
+    final currentTrackId = ref.watch(
+      playerControllerProvider.select((playback) => playback.currentTrack?.id),
+    );
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -546,7 +548,7 @@ class _RecentList extends ConsumerWidget {
       itemCount: tracks.length,
       itemBuilder: (context, index) {
         final track = tracks[index];
-        final selected = current?.id == track.id;
+        final selected = currentTrackId == track.id;
         return LiquidGlass(
           borderRadius: 20,
           // One real backdrop capture per dense recent item is unnecessary;

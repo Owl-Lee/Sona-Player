@@ -54,7 +54,9 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
   Widget build(BuildContext context) {
     final state = ref.watch(libraryControllerProvider);
     final filter = ref.watch(libraryFilterProvider);
-    final current = ref.watch(playerControllerProvider).currentTrack;
+    final currentTrackId = ref.watch(
+      playerControllerProvider.select((playback) => playback.currentTrack?.id),
+    );
     final appearance = ref.watch(appearanceControllerProvider);
     final accent = appearance.accent;
     final lightForeground =
@@ -102,7 +104,11 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
             _setSelecting(false);
           }
         },
+        // The mobile shell already places the player bar and a SafeArea-aware
+        // bottom navigation below this page. Reserving the system bottom inset
+        // here a second time leaves an unnecessary strip above the player.
         child: SafeArea(
+          bottom: false,
           child: LayoutBuilder(
             builder: (context, constraints) {
               final desktop = constraints.maxWidth >= 760;
@@ -220,7 +226,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                           : desktop
                           ? _DesktopTrackList(
                               tracks: tracks,
-                              currentId: current?.id,
+                              currentId: currentTrackId,
                               accent: accent,
                               onPlay: (track) => playTrack(
                                 ref,
@@ -245,7 +251,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                             )
                           : _MobileTrackList(
                               tracks: tracks,
-                              currentId: current?.id,
+                              currentId: currentTrackId,
                               accent: accent,
                               lightForeground: lightForeground,
                               onPlay: (track) => playTrack(
@@ -546,8 +552,8 @@ class _Header extends StatelessWidget {
       children: [
         OutlinedButton.icon(
           onPressed: state.isImporting ? null : onSmartOrganize,
-          icon: const Icon(Icons.auto_awesome_rounded, size: 18),
-          label: const Text('智能整理'),
+          icon: const Icon(Icons.fingerprint_rounded, size: 18),
+          label: Text(context.tr('全面识别')),
         ),
         OutlinedButton.icon(
           onPressed: onBatch,
@@ -579,7 +585,7 @@ class _Header extends StatelessWidget {
       children: [
         Expanded(child: title),
         IconButton.filledTonal(
-          tooltip: '一键智能整理',
+          tooltip: context.tr('全面识别整个曲库'),
           onPressed: state.isImporting ? null : onSmartOrganize,
           style: IconButton.styleFrom(
             backgroundColor: Colors.white.withValues(alpha: 0.78),
@@ -587,7 +593,7 @@ class _Header extends StatelessWidget {
             side: const BorderSide(color: Color(0x5C31465A)),
             elevation: 1,
           ),
-          icon: const Icon(Icons.auto_awesome_rounded),
+          icon: const Icon(Icons.fingerprint_rounded),
         ),
         const SizedBox(width: 8),
         IconButton.filledTonal(
@@ -1257,12 +1263,16 @@ class _MobileTrackList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return WholeItemViewport(
-      itemExtent: 72,
-      child: Material(
-        color: Colors.white.withValues(alpha: lightForeground ? 0.88 : 0.78),
-        borderRadius: BorderRadius.circular(22),
-        clipBehavior: Clip.antiAlias,
+    // Keep the glass card filling every pixel available above the mobile
+    // player bar. Only the scrolling viewport is rounded down to complete
+    // 72px rows, so a tall phone no longer leaves a large transparent gap
+    // below the library card.
+    return Material(
+      color: Colors.white.withValues(alpha: lightForeground ? 0.88 : 0.78),
+      borderRadius: BorderRadius.circular(22),
+      clipBehavior: Clip.antiAlias,
+      child: WholeItemViewport(
+        itemExtent: 72,
         child: ListView.separated(
           padding: EdgeInsets.zero,
           physics: const ItemSnapScrollPhysics(

@@ -1185,15 +1185,14 @@ class _PlaylistEntranceState extends State<_PlaylistEntrance>
 
   @override
   Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _curve,
-      child: SlideTransition(
-        position: Tween<Offset>(
-          begin: const Offset(0, 0.018),
-          end: Offset.zero,
-        ).animate(_curve),
-        child: widget.child,
-      ),
+    // Avoid an opacity saveLayer for every playlist card entering the grid.
+    // The short translation is enough to communicate that the page changed.
+    return SlideTransition(
+      position: Tween<Offset>(
+        begin: const Offset(0, 0.018),
+        end: Offset.zero,
+      ).animate(_curve),
+      child: widget.child,
     );
   }
 }
@@ -1223,7 +1222,14 @@ class _PlaylistCover extends StatelessWidget {
       child: SizedBox.square(
         dimension: size,
         child: cover != null && cover.existsSync()
-            ? Image.file(cover, fit: BoxFit.cover)
+            ? Image.file(
+                cover,
+                fit: BoxFit.cover,
+                cacheWidth: (size * MediaQuery.devicePixelRatioOf(context))
+                    .ceil()
+                    .clamp(96, 512),
+                filterQuality: FilterQuality.low,
+              )
             : DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
@@ -1358,7 +1364,11 @@ class _PlaylistEditorDialogState extends State<_PlaylistEditorDialog> {
                         ),
                         image: cover != null && cover.existsSync()
                             ? DecorationImage(
-                                image: FileImage(cover),
+                                image: ResizeImage.resizeIfNeeded(
+                                  512,
+                                  512,
+                                  FileImage(cover),
+                                ),
                                 fit: BoxFit.cover,
                               )
                             : null,

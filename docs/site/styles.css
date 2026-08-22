@@ -198,15 +198,20 @@ h1 em { color: var(--accent); font-style: normal; }
   .hero { padding: 126px 20px 100px; gap: 62px; }
   h1 { font-size: clamp(3.2rem, 17vw, 5.2rem); }
   .hero-proof { gap: 14px; }
-  .hero-visual { width: 100%; }.note-one { left: 4px; bottom: -48px; }.note-two { display: none; }
+  .hero-visual { width: 100%; }.hero-glow { right: 0; }.app-frame-hero { transform: none; }.note-one { left: 4px; bottom: -48px; }.note-two { display: none; }
   .section-shell { width: min(100% - 24px, 1180px); }
   .manifesto { padding: 56px 26px; }.manifesto-grid, .section-heading, .technology { grid-template-columns: 1fr; gap: 30px; }
   .features, .experience, .technology, .download { padding-top: 110px; }
   .feature-grid { grid-template-columns: 1fr; gap: 16px; }.feature-card { min-height: 0; }.feature-card-signal { padding-bottom: 88px; }.feature-card-wide { grid-column: auto; grid-template-columns: 1fr; gap: 10px; }.theme-orbits { width: 220px; margin-top: 24px; }
   .showcase-tab { padding: 8px 12px; font-size: .82rem; }.showcase-frame { border-radius: 20px; }
-  .privacy { margin-top: 110px; padding: 32px 24px; grid-template-columns: 62px 1fr; gap: 22px; }.privacy-mark { width: 58px; height: 58px; border-radius: 19px; font-size: 1.7rem; }
+  .privacy { margin-top: 110px; padding: 32px 24px; grid-template-columns: 62px minmax(0, 1fr); gap: 22px; }.privacy > * { min-width: 0; }.privacy-mark { width: 58px; height: 58px; border-radius: 19px; font-size: 1.7rem; }
   .download-grid { grid-template-columns: 1fr; }.download-card { grid-template-columns: 50px 1fr; min-height: 145px; padding: 24px; }.download-card > b { grid-column: 2; }.platform-icon { width: 50px; height: 50px; }
   .site-footer { grid-template-columns: 1fr; text-align: center; }.site-footer .brand { margin: auto; }.site-footer > div { justify-content: center; flex-wrap: wrap; }
+}
+
+@media (max-width: 360px) {
+  .privacy { grid-template-columns: 1fr; }
+  .privacy-list { grid-column: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {

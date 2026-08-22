@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -19,6 +20,7 @@ import '../../player/presentation/now_playing_page.dart';
 import '../../settings/presentation/settings_page.dart';
 import '../../settings/application/appearance_controller.dart';
 import '../../settings/presentation/widgets/appearance_backdrop.dart';
+import '../../settings/presentation/widgets/appearance_picker.dart';
 import '../application/shell_navigation.dart';
 
 class MainShell extends ConsumerStatefulWidget {
@@ -81,11 +83,20 @@ class _MainShellState extends ConsumerState<MainShell> {
             reverseTransitionDuration: const Duration(milliseconds: 120),
             pageBuilder: (_, animation, _) =>
                 NowPlayingPage(autoplayRequest: request),
-            transitionsBuilder: (_, animation, _, child) => FadeTransition(
-              opacity: CurvedAnimation(
-                parent: animation,
-                curve: Curves.easeOutCubic,
-              ),
+            // A full-screen fade forces every liquid-glass surface into an
+            // extra composited opacity layer. A very small slide keeps the
+            // navigation cue while staying on the cheaper transform path.
+            transitionsBuilder: (_, animation, _, child) => SlideTransition(
+              position:
+                  Tween<Offset>(
+                    begin: const Offset(0, 0.012),
+                    end: Offset.zero,
+                  ).animate(
+                    CurvedAnimation(
+                      parent: animation,
+                      curve: Curves.easeOutCubic,
+                    ),
+                  ),
               child: child,
             ),
           ),
@@ -147,7 +158,8 @@ class _MainShellState extends ConsumerState<MainShell> {
                 if (desktop)
                   Column(
                     children: [
-                      _DesktopWindowBar(appearance: appearance),
+                      if (defaultTargetPlatform == TargetPlatform.windows)
+                        _DesktopWindowBar(appearance: appearance),
                       Expanded(
                         child: Row(
                           children: [
@@ -225,6 +237,12 @@ class _MainShellState extends ConsumerState<MainShell> {
                           children: _pages,
                         ),
                       ),
+                      // Keep a real strip of wallpaper between page surfaces
+                      // and the compact player. Putting this spacing inside an
+                      // individual page lets rounded translucent cards visually
+                      // consume it, while a shell-level gap stays consistent on
+                      // every mobile destination.
+                      const SizedBox(height: 8),
                       const NowPlayingBar(compact: true),
                       _MobileBottomNavigation(
                         selectedIndex: selectedIndex > 3 ? 0 : selectedIndex,
@@ -400,14 +418,17 @@ class _AnimatedPageStackState extends State<_AnimatedPageStack>
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, _) {
-        final progress = Curves.easeOutCubic.transform(_controller.value);
+        final animationsDisabled =
+            MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+        final progress = animationsDisabled
+            ? 1.0
+            : Curves.easeOutCubic.transform(_controller.value);
         // Rendering outgoing and incoming pages together doubles the cost of
         // BackdropFilter/LiquidGlass. A short one-page entrance still gives
         // navigation feedback without forcing two full-screen blur passes.
         return _SoftPageLayer(
           visible: true,
           interactive: progress > 0.72,
-          opacity: progress,
           horizontalOffset: _direction * 12 * (1 - progress),
           child: widget.children[_currentIndex],
         );
@@ -420,14 +441,12 @@ class _SoftPageLayer extends StatelessWidget {
   const _SoftPageLayer({
     required this.visible,
     required this.interactive,
-    required this.opacity,
     required this.horizontalOffset,
     required this.child,
   });
 
   final bool visible;
   final bool interactive;
-  final double opacity;
   final double horizontalOffset;
   final Widget child;
 
@@ -441,10 +460,10 @@ class _SoftPageLayer extends StatelessWidget {
           ignoring: !interactive,
           child: Transform.translate(
             offset: Offset(horizontalOffset, 0),
-            child: Opacity(
-              opacity: opacity.clamp(0.0, 1.0),
-              child: RepaintBoundary(child: child),
-            ),
+            // Opacity over an entire page creates a saveLayer and makes all
+            // of its backdrop filters repaint together. Keep the subtle slide
+            // but render the page directly.
+            child: RepaintBoundary(child: child),
           ),
         ),
       ),
@@ -621,6 +640,12 @@ class _DesktopWindowBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // A wide Android screen (tablet, landscape, desktop mode) may use the
+    // desktop content layout, but it must never receive Windows caption
+    // controls. window_manager is initialized only on Windows as well.
+    if (defaultTargetPlatform != TargetPlatform.windows) {
+      return const SizedBox.shrink();
+    }
     // The native caption buttons inherit this brightness.  Base this on the
     // actual theme colour instead of a per-preset foreground flag: a bright
     // wheat / ice theme gets a readable *tinted* light chrome, while a deep
@@ -941,6 +966,14 @@ class _DesktopSidebarState extends ConsumerState<_DesktopSidebar> {
                 _NavigationItem(
                   accent: appearance.accent,
                   lightForeground: useLightForeground,
+                  icon: Icons.palette_outlined,
+                  label: context.tr('切换皮肤'),
+                  selected: false,
+                  onTap: _showAppearancePicker,
+                ),
+                _NavigationItem(
+                  accent: appearance.accent,
+                  lightForeground: useLightForeground,
                   icon: Icons.settings_rounded,
                   label: context.tr('设置'),
                   selected: selectedIndex == 3,
@@ -1023,6 +1056,121 @@ class _DesktopSidebarState extends ConsumerState<_DesktopSidebar> {
         ),
       ),
     );
+  }
+
+  Future<void> _showAppearancePicker() async {
+    final selection = await showModalBottomSheet<AppearancePickerSelection>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.20),
+      sheetAnimationStyle: const AnimationStyle(
+        duration: Duration(milliseconds: 160),
+        reverseDuration: Duration(milliseconds: 120),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Align(
+          alignment: Alignment.bottomCenter,
+          child: FractionallySizedBox(
+            heightFactor: 0.84,
+            widthFactor: 1,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final panelWidth = (constraints.maxWidth - 24).clamp(
+                  0.0,
+                  980.0,
+                );
+                return Align(
+                  alignment: Alignment.bottomCenter,
+                  child: SizedBox(
+                    width: panelWidth,
+                    height: constraints.maxHeight,
+                    child: LiquidGlass(
+                      borderRadius: 28,
+                      // A high-sigma blur over 84% of a desktop window is
+                      // extremely expensive while the sheet is moving. The
+                      // glass tint, rim and shadow preserve the visual style
+                      // without a live full-screen BackdropFilter.
+                      blur: 0,
+                      tint: widget.appearance.accent,
+                      borderWidth: 1.2,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(22, 18, 22, 20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        sheetContext.tr('播放器背景'),
+                                        style: const TextStyle(
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 3),
+                                      Text(
+                                        sheetContext.tr(
+                                          '选择一套皮肤，也可以导入并裁切自己的图片。',
+                                        ),
+                                        style: const TextStyle(
+                                          color: AppColors.textSecondary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                IconButton(
+                                  tooltip: MaterialLocalizations.of(
+                                    sheetContext,
+                                  ).closeButtonTooltip,
+                                  onPressed: () => Navigator.pop(sheetContext),
+                                  icon: const Icon(Icons.close_rounded),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            Expanded(
+                              child: AppearancePicker(
+                                scrollable: true,
+                                onSelectionRequested: (selection) {
+                                  Navigator.pop(sheetContext, selection);
+                                },
+                                onSelectionComplete: () {
+                                  if (Navigator.of(sheetContext).canPop()) {
+                                    Navigator.pop(sheetContext);
+                                  }
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    if (!mounted || selection == null) return;
+    final controller = ref.read(appearanceControllerProvider.notifier);
+    final presetId = selection.presetId;
+    if (presetId != null) {
+      await controller.selectPreset(presetId);
+      return;
+    }
+    final customBackground = selection.customBackground;
+    if (customBackground != null) {
+      await controller.selectCustomBackground(customBackground);
+    }
   }
 }
 

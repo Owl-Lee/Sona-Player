@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as path_util;
@@ -403,6 +403,14 @@ class AppearanceController extends StateNotifier<AppearanceState> {
   }
 
   Future<String> saveCustomBackground(Uint8List croppedBytes) async {
+    // Decoding a 4K/8K user photo and sampling its accent on the UI isolate
+    // stalls every animation in the app. Prepare it off-thread and cap the
+    // stored wallpaper to a practical display resolution at the same time.
+    final prepared = await compute(_prepareCustomBackground, croppedBytes);
+    final backgroundBytes = prepared?.bytes ?? croppedBytes;
+    final accent = prepared == null
+        ? state.preset.accent
+        : Color(prepared.accentValue);
     final support = await getApplicationSupportDirectory();
     final directory = Directory(
       path_util.join(support.path, 'SonarVault', 'backgrounds'),
@@ -415,8 +423,7 @@ class AppearanceController extends StateNotifier<AppearanceState> {
       directory.path,
       'custom_${DateTime.now().microsecondsSinceEpoch}.jpg',
     );
-    await File(destination).writeAsBytes(croppedBytes, flush: true);
-    final accent = _extractAccent(croppedBytes);
+    await File(destination).writeAsBytes(backgroundBytes, flush: true);
     final item = CustomBackground(
       path: destination,
       accentValue: accent.toARGB32(),
@@ -441,36 +448,58 @@ class AppearanceController extends StateNotifier<AppearanceState> {
     );
     return destination;
   }
+}
 
-  Color _extractAccent(Uint8List bytes) {
-    final decoded = img.decodeImage(bytes);
-    if (decoded == null) return state.preset.accent;
-    final sample = img.copyResize(decoded, width: 48, height: 48);
-    var red = 0.0;
-    var green = 0.0;
-    var blue = 0.0;
-    var weightTotal = 0.0;
-    for (final pixel in sample) {
-      final channels = [pixel.r, pixel.g, pixel.b];
-      final maxChannel = channels.reduce((a, b) => a > b ? a : b);
-      final minChannel = channels.reduce((a, b) => a < b ? a : b);
-      final saturation = (maxChannel - minChannel) / 255.0;
-      final weight = 0.35 + saturation * 1.65;
-      red += pixel.r * weight;
-      green += pixel.g * weight;
-      blue += pixel.b * weight;
-      weightTotal += weight;
-    }
-    final average = Color.fromARGB(
-      255,
-      (red / weightTotal).round(),
-      (green / weightTotal).round(),
-      (blue / weightTotal).round(),
-    );
-    final hsl = HSLColor.fromColor(average);
-    return hsl
-        .withSaturation(hsl.saturation.clamp(0.42, 0.78))
-        .withLightness(hsl.lightness.clamp(0.38, 0.58))
-        .toColor();
+typedef _PreparedBackground = ({Uint8List bytes, int accentValue});
+
+_PreparedBackground? _prepareCustomBackground(Uint8List bytes) {
+  var decoded = img.decodeImage(bytes);
+  if (decoded == null) return null;
+
+  const maxEdge = 2560;
+  if (decoded.width > maxEdge || decoded.height > maxEdge) {
+    decoded = decoded.width >= decoded.height
+        ? img.copyResize(
+            decoded,
+            width: maxEdge,
+            interpolation: img.Interpolation.average,
+          )
+        : img.copyResize(
+            decoded,
+            height: maxEdge,
+            interpolation: img.Interpolation.average,
+          );
   }
+
+  final sample = img.copyResize(decoded, width: 48, height: 48);
+  var red = 0.0;
+  var green = 0.0;
+  var blue = 0.0;
+  var weightTotal = 0.0;
+  for (final pixel in sample) {
+    final channels = [pixel.r, pixel.g, pixel.b];
+    final maxChannel = channels.reduce((a, b) => a > b ? a : b);
+    final minChannel = channels.reduce((a, b) => a < b ? a : b);
+    final saturation = (maxChannel - minChannel) / 255.0;
+    final weight = 0.35 + saturation * 1.65;
+    red += pixel.r * weight;
+    green += pixel.g * weight;
+    blue += pixel.b * weight;
+    weightTotal += weight;
+  }
+  final average = Color.fromARGB(
+    255,
+    (red / weightTotal).round(),
+    (green / weightTotal).round(),
+    (blue / weightTotal).round(),
+  );
+  final hsl = HSLColor.fromColor(average);
+  final accent = hsl
+      .withSaturation(hsl.saturation.clamp(0.42, 0.78))
+      .withLightness(hsl.lightness.clamp(0.38, 0.58))
+      .toColor();
+  return (
+    bytes: Uint8List.fromList(img.encodeJpg(decoded, quality: 90)),
+    accentValue: accent.toARGB32(),
+  );
 }

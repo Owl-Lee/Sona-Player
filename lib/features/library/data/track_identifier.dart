@@ -14,6 +14,8 @@ class TrackIdentifier {
     : _httpClient = httpClient ?? HttpClient();
 
   final HttpClient _httpClient;
+  Future<void> _acoustIdGate = Future.value();
+  DateTime? _lastAcoustIdRequestAt;
   Future<void> _musicBrainzGate = Future.value();
   DateTime? _lastMusicBrainzRequestAt;
 
@@ -147,50 +149,91 @@ class TrackIdentifier {
     _Fingerprint fingerprint,
     String clientKey,
   ) async {
-    try {
-      final request = await _httpClient
-          .postUrl(Uri.parse('https://api.acoustid.org/v2/lookup'))
-          .timeout(const Duration(seconds: 8));
-      request.headers.contentType = ContentType(
-        'application',
-        'x-www-form-urlencoded',
-        charset: 'utf-8',
-      );
-      request.write(
-        Uri(
-          queryParameters: {
-            'client': clientKey,
-            'format': 'json',
-            'duration': '${fingerprint.durationSeconds}',
-            'fingerprint': fingerprint.value,
-            'meta': 'recordings releasegroups compress',
-          },
-        ).query,
-      );
-      final response = await request.close().timeout(
-        const Duration(seconds: 10),
-      );
-      if (response.statusCode != HttpStatus.ok) return null;
-      final body = await utf8.decoder.bind(response).join();
-      final data = jsonDecode(body) as Map<String, dynamic>;
-      final results = data['results'] as List<dynamic>? ?? const [];
-      TrackIdentificationCandidate? best;
-      for (final rawResult in results.whereType<Map<String, dynamic>>()) {
-        final confidence = (rawResult['score'] as num?)?.toDouble() ?? 0;
-        final recordings =
-            rawResult['recordings'] as List<dynamic>? ?? const [];
-        for (final rawRecording
-            in recordings.whereType<Map<String, dynamic>>()) {
-          final candidate = _candidateFromAcoustId(rawRecording, confidence);
-          if (candidate != null &&
-              (best == null || candidate.confidence > best.confidence)) {
-            best = candidate;
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        // AcoustID asks clients to stay below three requests per second. A
+        // 400 ms gate is intentionally conservative and is shared by batch
+        // and single-track identification.
+        await _waitForAcoustIdSlot();
+        final request = await _httpClient
+            .postUrl(Uri.parse('https://api.acoustid.org/v2/lookup'))
+            .timeout(const Duration(seconds: 8));
+        request.headers.contentType = ContentType(
+          'application',
+          'x-www-form-urlencoded',
+          charset: 'utf-8',
+        );
+        request.write(
+          Uri(
+            queryParameters: {
+              'client': clientKey,
+              'format': 'json',
+              'duration': '${fingerprint.durationSeconds}',
+              'fingerprint': fingerprint.value,
+              'meta': 'recordings releasegroups compress',
+            },
+          ).query,
+        );
+        final response = await request.close().timeout(
+          const Duration(seconds: 10),
+        );
+        if (response.statusCode == HttpStatus.tooManyRequests ||
+            response.statusCode == HttpStatus.serviceUnavailable) {
+          await response.drain<void>();
+          if (attempt == 0) {
+            await Future<void>.delayed(const Duration(milliseconds: 1200));
+            continue;
+          }
+          return null;
+        }
+        if (response.statusCode != HttpStatus.ok) {
+          await response.drain<void>();
+          return null;
+        }
+        final body = await utf8.decoder.bind(response).join();
+        final data = jsonDecode(body) as Map<String, dynamic>;
+        final results = data['results'] as List<dynamic>? ?? const [];
+        TrackIdentificationCandidate? best;
+        for (final rawResult in results.whereType<Map<String, dynamic>>()) {
+          final confidence = (rawResult['score'] as num?)?.toDouble() ?? 0;
+          final recordings =
+              rawResult['recordings'] as List<dynamic>? ?? const [];
+          for (final rawRecording
+              in recordings.whereType<Map<String, dynamic>>()) {
+            final candidate = _candidateFromAcoustId(rawRecording, confidence);
+            if (candidate != null &&
+                (best == null || candidate.confidence > best.confidence)) {
+              best = candidate;
+            }
           }
         }
+        return best;
+      } catch (_) {
+        if (attempt == 0) {
+          await Future<void>.delayed(const Duration(milliseconds: 700));
+          continue;
+        }
+        return null;
       }
-      return best;
-    } catch (_) {
-      return null;
+    }
+    return null;
+  }
+
+  Future<void> _waitForAcoustIdSlot() async {
+    final previous = _acoustIdGate;
+    final completer = Completer<void>();
+    _acoustIdGate = completer.future;
+    await previous;
+    try {
+      final last = _lastAcoustIdRequestAt;
+      if (last != null) {
+        final remaining =
+            const Duration(milliseconds: 400) - DateTime.now().difference(last);
+        if (remaining > Duration.zero) await Future<void>.delayed(remaining);
+      }
+      _lastAcoustIdRequestAt = DateTime.now();
+    } finally {
+      completer.complete();
     }
   }
 
@@ -246,7 +289,7 @@ class TrackIdentifier {
           .timeout(const Duration(seconds: 8));
       request.headers.set(
         HttpHeaders.userAgentHeader,
-        'Sona/0.4.50 (https://github.com/Owl-Lee/Sona-Player)',
+        'Sona/0.4.51 (https://github.com/Owl-Lee/Sona-Player)',
       );
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
       final response = await request.close().timeout(

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -647,15 +648,19 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
       vsync: this,
       duration: const Duration(seconds: 16),
     );
-    _videoController = VideoController(
-      ref.read(playerControllerProvider.notifier).player,
-      // Several local MV files decode audio but render black through the
-      // Windows GPU texture path. CPU output is more conservative, but keeps
-      // the displayed frame reliable across the machines we support.
-      configuration: const VideoControllerConfiguration(
-        enableHardwareAcceleration: false,
-      ),
-    );
+    final player = ref.read(playerControllerProvider.notifier).player;
+    _videoController = defaultTargetPlatform == TargetPlatform.windows
+        ? VideoController(
+            player,
+            // Several local MV files decode audio but render black through the
+            // Windows GPU texture path. Keep the conservative software path
+            // only on Windows; Android must retain media_kit's hardware-backed
+            // decoder and surface defaults.
+            configuration: const VideoControllerConfiguration(
+              enableHardwareAcceleration: false,
+            ),
+          )
+        : VideoController(player);
     final request = widget.autoplayRequest;
     if (request != null) {
       // Reserve the video stage during the initial build, before any call to
@@ -677,8 +682,15 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
 
   @override
   Widget build(BuildContext context) {
-    final playback = ref.watch(playerControllerProvider);
-    final library = ref.watch(libraryControllerProvider);
+    final playerSummary = ref.watch(
+      playerControllerProvider.select(
+        (state) =>
+            (currentTrack: state.currentTrack, isPlaying: state.isPlaying),
+      ),
+    );
+    final libraryTracks = ref.watch(
+      libraryControllerProvider.select((state) => state.tracks),
+    );
     final appearance = ref.watch(appearanceControllerProvider);
     // A video-only request mounts this page before the native video surface is
     // ready, so [playback.currentTrack] can still be the song that was playing
@@ -686,13 +698,13 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
     // settles, the controller must drive every later queue selection.
     final requestedTrack = widget.autoplayRequest?.track;
     final sourceTrack = resolveNowPlayingDisplayTrack(
-      currentTrack: playback.currentTrack,
+      currentTrack: playerSummary.currentTrack,
       requestedTrack: requestedTrack,
       isInitialVideoRequestPending: _initialVideoRequestPending,
     );
     final track = sourceTrack == null
         ? null
-        : library.tracks.cast<Track?>().firstWhere(
+        : libraryTracks.cast<Track?>().firstWhere(
             (item) => item?.id == sourceTrack.id,
             orElse: () => sourceTrack,
           );
@@ -715,11 +727,25 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
       }
     }
 
-    if (playback.isPlaying && !_spin.isAnimating) {
+    if (playerSummary.isPlaying && !_spin.isAnimating) {
       _spin.repeat();
-    } else if (!playback.isPlaying && _spin.isAnimating) {
+    } else if (!playerSummary.isPlaying && _spin.isAnimating) {
       _spin.stop();
     }
+
+    final usesPlayerAmbient =
+        _mode == PlayerVisualMode.vinyl &&
+        !appearance.usesCustom &&
+        const {
+          'cyan_glass',
+          'sakura',
+          'aurora',
+          'farm',
+          'clean',
+          'vinyl_bloom',
+          'mist_orbs',
+          'obsidian_rings',
+        }.contains(appearance.preset.id);
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light.copyWith(
@@ -736,7 +762,21 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
         body: Stack(
           fit: StackFit.expand,
           children: [
-            AppearanceBackdrop(appearance: appearance, forPlayer: true),
+            // The player has a few deliberately tuned theme effects of its
+            // own. Suppress the backdrop's generic ambient layer only for
+            // those presets so two full-screen painters never run together.
+            // Other presets continue to use the shared backdrop animation.
+            MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                disableAnimations:
+                    MediaQuery.disableAnimationsOf(context) ||
+                    usesPlayerAmbient,
+              ),
+              child: AppearanceBackdrop(
+                appearance: appearance,
+                forPlayer: true,
+              ),
+            ),
             if (appearance.preset.id == 'cyan_glass' &&
                 _mode == PlayerVisualMode.vinyl)
               Positioned.fill(child: _CyanAmbientBeta(progress: _spin)),
@@ -809,14 +849,14 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
                             ? _buildDesktop(
                                 context,
                                 track,
-                                playback,
+                                playerSummary.isPlaying,
                                 constraints,
                                 tonearmColor,
                               )
                             : _buildMobile(
                                 context,
                                 track,
-                                playback,
+                                playerSummary.isPlaying,
                                 constraints,
                                 tonearmColor,
                               );
@@ -835,7 +875,7 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
   Widget _buildDesktop(
     BuildContext context,
     Track? track,
-    PlaybackState playback,
+    bool isPlaying,
     BoxConstraints constraints,
     Color? tonearmColor,
   ) {
@@ -843,7 +883,7 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
     // intact, but give video a cinema-sized stage and move every control into
     // one deliberately compact strip along the bottom.
     if (_mode == PlayerVisualMode.musicVideo) {
-      return _buildDesktopMvLayout(context, track, playback);
+      return _buildDesktopMvLayout(context, track);
     }
     final recordSize = (constraints.maxHeight * 0.52).clamp(280.0, 440.0);
     return Padding(
@@ -871,7 +911,7 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
                             track: track,
                             size: recordSize,
                             turns: _spin,
-                            isPlaying: playback.isPlaying,
+                            isPlaying: isPlaying,
                             limeJelly: false,
                             tonearmColor: tonearmColor,
                           ),
@@ -899,7 +939,6 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
                 limeJelly: false,
                 child: PlayerInformation(
                   track: track,
-                  playback: playback,
                   mode: _mode,
                   onModeChanged: _setMode,
                 ),
@@ -911,11 +950,7 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
     );
   }
 
-  Widget _buildDesktopMvLayout(
-    BuildContext context,
-    Track? track,
-    PlaybackState playback,
-  ) {
+  Widget _buildDesktopMvLayout(BuildContext context, Track? track) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(54, 6, 54, 28),
       child: Column(
@@ -943,7 +978,6 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
           const SizedBox(height: 16),
           _DesktopMvControlBar(
             track: track,
-            playback: playback,
             mode: _mode,
             onModeChanged: _setMode,
           ),
@@ -955,7 +989,7 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
   Widget _buildMobile(
     BuildContext context,
     Track? track,
-    PlaybackState playback,
+    bool isPlaying,
     BoxConstraints constraints,
     Color? tonearmColor,
   ) {
@@ -1004,7 +1038,7 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
                                 track: track,
                                 size: recordSize,
                                 turns: _spin,
-                                isPlaying: playback.isPlaying,
+                                isPlaying: isPlaying,
                                 limeJelly: false,
                                 tonearmColor: tonearmColor,
                               ),
@@ -1035,7 +1069,6 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
                 limeJelly: false,
                 child: PlayerInformation(
                   track: track,
-                  playback: playback,
                   mode: _mode,
                   compact: true,
                   onModeChanged: _setMode,
@@ -1557,10 +1590,14 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
   }
 
   Future<void> _showAppearancePicker() async {
-    await showModalBottomSheet<void>(
+    final selection = await showModalBottomSheet<AppearancePickerSelection>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.white,
+      sheetAnimationStyle: const AnimationStyle(
+        duration: Duration(milliseconds: 160),
+        reverseDuration: Duration(milliseconds: 120),
+      ),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
@@ -1605,6 +1642,9 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
                   Expanded(
                     child: AppearancePicker(
                       scrollable: true,
+                      onSelectionRequested: (selection) {
+                        Navigator.pop(context, selection);
+                      },
                       onSelectionComplete: () => Navigator.pop(context),
                     ),
                   ),
@@ -1615,6 +1655,17 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
         ),
       ),
     );
+    if (!mounted || selection == null) return;
+    final controller = ref.read(appearanceControllerProvider.notifier);
+    final presetId = selection.presetId;
+    if (presetId != null) {
+      await controller.selectPreset(presetId);
+      return;
+    }
+    final customBackground = selection.customBackground;
+    if (customBackground != null) {
+      await controller.selectCustomBackground(customBackground);
+    }
   }
 
   Future<void> _showMoreMenu(Track? track) async {
@@ -1903,8 +1954,10 @@ class _PlayerHeader extends StatelessWidget {
           _GlassPillButton(themeName: themeName, onPressed: onTheme),
           const SizedBox(width: 4),
           _GlassIconButton(icon: Icons.more_horiz_rounded, onPressed: onMore),
-          const SizedBox(width: 6),
-          const _PlayerWindowControls(),
+          if (defaultTargetPlatform == TargetPlatform.windows) ...[
+            const SizedBox(width: 6),
+            const _PlayerWindowControls(),
+          ],
         ],
       ),
     );
@@ -1919,6 +1972,9 @@ class _PlayerWindowControls extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (defaultTargetPlatform != TargetPlatform.windows) {
+      return const SizedBox.shrink();
+    }
     return LiquidGlass(
       borderRadius: 20,
       blur: 18,
@@ -2080,13 +2136,11 @@ class _GlassPanel extends StatelessWidget {
 class _DesktopMvControlBar extends ConsumerWidget {
   const _DesktopMvControlBar({
     required this.track,
-    required this.playback,
     required this.mode,
     required this.onModeChanged,
   });
 
   final Track? track;
-  final PlaybackState playback;
   final PlayerVisualMode mode;
   final ValueChanged<PlayerVisualMode> onModeChanged;
 
@@ -2094,6 +2148,9 @@ class _DesktopMvControlBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final player = ref.read(playerControllerProvider.notifier);
     final library = ref.read(libraryControllerProvider.notifier);
+    final isPlaying = ref.watch(
+      playerControllerProvider.select((state) => state.isPlaying),
+    );
     final appearance = ref.watch(appearanceControllerProvider);
     final accent = appearance.accent;
     final accentForeground =
@@ -2173,7 +2230,7 @@ class _DesktopMvControlBar extends ConsumerWidget {
                       _PrimaryPlayButton(
                         size: 46,
                         enabled: track != null,
-                        isPlaying: playback.isPlaying,
+                        isPlaying: isPlaying,
                         onPressed: player.togglePlayPause,
                         accent: accent,
                         foreground: accentForeground,
@@ -2266,14 +2323,12 @@ class PlayerInformation extends ConsumerWidget {
   const PlayerInformation({
     super.key,
     required this.track,
-    required this.playback,
     required this.mode,
     required this.onModeChanged,
     this.compact = false,
   });
 
   final Track? track;
-  final PlaybackState playback;
   final PlayerVisualMode mode;
   final ValueChanged<PlayerVisualMode> onModeChanged;
   final bool compact;
@@ -2282,6 +2337,20 @@ class PlayerInformation extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final player = ref.read(playerControllerProvider.notifier);
     final library = ref.read(libraryControllerProvider.notifier);
+    final playbackTiming = ref.watch(
+      playerControllerProvider.select(
+        (state) => (
+          isPlaying: state.isPlaying,
+          position: state.position,
+          duration: state.duration,
+        ),
+      ),
+    );
+    final playback = PlaybackState(
+      isPlaying: playbackTiming.isPlaying,
+      position: playbackTiming.position,
+      duration: playbackTiming.duration,
+    );
     final appearance = ref.watch(appearanceControllerProvider);
     final accent = appearance.accent;
     final accentForeground =
@@ -3190,14 +3259,24 @@ class _MvStage extends ConsumerWidget {
         onTap: onAttachVideo,
       );
     }
-    final playback = ref.watch(playerControllerProvider);
+    final playbackTiming = ref.watch(
+      playerControllerProvider.select(
+        (state) => (position: state.position, duration: state.duration),
+      ),
+    );
     final player = ref.read(playerControllerProvider.notifier);
-    final appearance = ref.watch(appearanceControllerProvider);
-    final timelineDuration = _seekableDuration(playback, track);
+    final accent = ref.watch(
+      appearanceControllerProvider.select((state) => state.accent),
+    );
+    final timelineDuration = playbackTiming.duration > Duration.zero
+        ? playbackTiming.duration
+        : track?.duration ?? Duration.zero;
     final seekable = timelineDuration > Duration.zero;
     final max = seekable ? timelineDuration.inMilliseconds.toDouble() : 1.0;
     final value = seekable
-        ? playback.position.inMilliseconds.clamp(0, max.toInt()).toDouble()
+        ? playbackTiming.position.inMilliseconds
+              .clamp(0, max.toInt())
+              .toDouble()
         : 0.0;
     final video = LiquidGlass(
       borderRadius: expand ? 30 : 26,
@@ -3254,7 +3333,7 @@ class _MvStage extends ConsumerWidget {
                           height: 22,
                           child: CircularProgressIndicator(
                             strokeWidth: 2.2,
-                            color: appearance.accent,
+                            color: accent,
                           ),
                         ),
                       const SizedBox(height: 12),
@@ -3286,7 +3365,7 @@ class _MvStage extends ConsumerWidget {
                     value: value,
                     max: max,
                     enabled: true,
-                    accent: appearance.accent,
+                    accent: accent,
                     onSeek: player.seek,
                   ),
                 ),

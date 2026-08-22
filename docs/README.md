@@ -11,6 +11,7 @@ These public documents preserve Sona's reusable product and engineering decision
 | [Reliability test matrix](testing/reliability-checklist.md) | Playback, queues, MVs, import/deletion, offline behavior, and stress testing |
 | [Development and maintenance guide](contributing/development-guide.md) | Build steps, verification, contribution scope, and security boundaries |
 | [Curated development history](history/development-notes.md) | Major milestones from a local player to the public preview |
+| [0.4.51 public preview notes](releases/0.4.51-preview.1.md) | Permanent Android signing, reliability updates, packages, and checksums |
 | [0.4.50 public preview notes](releases/0.4.50-preview.1.md) | Packages, installation notes, and SHA-256 checksums |
 
 ## Documentation policy
@@ -37,6 +38,7 @@ These public documents preserve Sona's reusable product and engineering decision
 | [稳定性测试矩阵](testing/reliability-checklist.md#简体中文) | 播放、队列、MV、导入删除、离线与压力测试 |
 | [开发与维护指南](contributing/development-guide.md#简体中文) | 构建、验证、贡献范围与安全边界 |
 | [开发历程摘要](history/development-notes.md#简体中文) | 从本地播放器到公开预览版的重要演进 |
+| [0.4.51 公开预览版说明](releases/0.4.51-preview.1.md#简体中文) | Android 永久签名、稳定性更新、安装包与校验值 |
 | [0.4.50 公开预览版说明](releases/0.4.50-preview.1.md#简体中文) | 安装包、安装说明与 SHA-256 校验值 |
 
 ### 文档维护规则

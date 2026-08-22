@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 0.4.50+2069
+version: 0.4.51+2070
 
 environment:
   sdk: ^3.13.0
@@ -78,7 +78,44 @@ flutter:
   uses-material-design: true
 
   assets:
-    - assets/backgrounds/
+    # Only ship backgrounds referenced by the current preset catalogue. The
+    # source folder also contains historical drafts; bundling the whole folder
+    # added roughly 90 MiB to every Windows/Android release.
+    - assets/backgrounds/aurora_desktop_v1.png
+    - assets/backgrounds/aurora_violet_player_v4.png
+    - assets/backgrounds/aurora_violet_v4.png
+    - assets/backgrounds/clean_desktop_v1.png
+    - assets/backgrounds/clean_player_v1.png
+    - assets/backgrounds/cyan_glass_desktop_v1.png
+    - assets/backgrounds/cyan_glass_v1.png
+    - assets/backgrounds/farm_desktop_v1.png
+    - assets/backgrounds/farm_photo_player_v3.png
+    - assets/backgrounds/farm_photo_v3.png
+    - assets/backgrounds/lime_jelly_desktop_v1.png
+    - assets/backgrounds/lime_jelly_player_v2.png
+    - assets/backgrounds/lime_jelly_v1.png
+    - assets/backgrounds/magma_desktop_v1.png
+    - assets/backgrounds/mist_orbs_desktop_v2.png
+    - assets/backgrounds/mist_orbs_player_v2.png
+    - assets/backgrounds/mist_orbs_v2.png
+    - assets/backgrounds/navy_tide_desktop_v1.png
+    - assets/backgrounds/navy_tide_player_v2.png
+    - assets/backgrounds/navy_tide_v2.png
+    - assets/backgrounds/obsidian_rings_desktop_v2.png
+    - assets/backgrounds/obsidian_rings_player_v2.png
+    - assets/backgrounds/obsidian_rings_v2.png
+    - assets/backgrounds/orange_summer_desktop_v1.png
+    - assets/backgrounds/orange_summer_player_v1.png
+    - assets/backgrounds/orange_summer_v1.png
+    - assets/backgrounds/sakura_soda_desktop_v2.png
+    - assets/backgrounds/sakura_soda_v2.png
+    - assets/backgrounds/titanium_silver_desktop_v1.png
+    - assets/backgrounds/titanium_silver_player_v1.png
+    - assets/backgrounds/titanium_silver_v1.png
+    - assets/backgrounds/vinyl_bloom_desktop_v1.png
+    - assets/backgrounds/vinyl_bloom_player_v1.png
+    - assets/backgrounds/vinyl_bloom_v1.png
+    - assets/backgrounds/wine_nocturne_unframed_v4.png
     - assets/branding/
     - assets/vinyl/
 

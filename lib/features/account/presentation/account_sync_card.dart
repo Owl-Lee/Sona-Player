@@ -478,10 +478,15 @@ class _CloudLibraryPanelState extends ConsumerState<_CloudLibraryPanel> {
   final _searchController = TextEditingController();
   final _trackScrollController = ScrollController();
   final _expandedArtists = <String>{};
+  final _selectedCloudTrackIds = <String>{};
 
   var _view = _CloudLibraryView.tracks;
   var _filter = _CloudMediaFilter.all;
   var _sort = _CloudTrackSort.recent;
+  var _selecting = false;
+  var _deletingSelected = false;
+  var _deleteCompleted = 0;
+  var _deleteTotal = 0;
   String? _openingCloudTrackId;
   final _cloudPlaybackRequests = LatestRequestGate();
 
@@ -529,6 +534,141 @@ class _CloudLibraryPanelState extends ConsumerState<_CloudLibraryPanel> {
           .read(cloudSyncControllerProvider.notifier)
           .deleteCloudTrack(track);
     }
+  }
+
+  void _setSelecting(bool value) {
+    if (_deletingSelected) return;
+    setState(() {
+      _selecting = value;
+      _selectedCloudTrackIds.clear();
+      _deleteCompleted = 0;
+      _deleteTotal = 0;
+    });
+  }
+
+  void _toggleTrackSelection(CloudTrackSummary track) {
+    if (_deletingSelected) return;
+    setState(() {
+      if (!_selectedCloudTrackIds.add(track.id)) {
+        _selectedCloudTrackIds.remove(track.id);
+      }
+    });
+  }
+
+  void _toggleSelectAll(List<CloudTrackSummary> allTracks) {
+    if (_deletingSelected) return;
+    final allIds = allTracks.map((track) => track.id).toSet();
+    final allSelected =
+        allIds.isNotEmpty && allIds.every(_selectedCloudTrackIds.contains);
+    setState(() {
+      if (allSelected) {
+        _selectedCloudTrackIds.removeAll(allIds);
+      } else {
+        // "Select all" deliberately means the complete cloud library, not
+        // only the currently visible search/filter result. This makes the
+        // mobile delete-all workflow predictable while the count keeps the
+        // scope explicit before confirmation.
+        _selectedCloudTrackIds.addAll(allIds);
+      }
+    });
+  }
+
+  Future<void> _confirmDeleteSelected(List<CloudTrackSummary> allTracks) async {
+    if (_deletingSelected) return;
+    final selected = allTracks
+        .where((track) => _selectedCloudTrackIds.contains(track.id))
+        .toList(growable: false);
+    if (selected.isEmpty) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          context
+              .tr('删除选中的 {count} 首云端歌曲？')
+              .replaceAll('{count}', '${selected.length}'),
+        ),
+        content: Text(
+          context.tr(
+            '这些歌曲会从云空间和其他设备可同步内容中移除。\n\n'
+            '本机文件不会删除；此后它们也不会被自动重新上传。此操作无法撤销。',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(context.tr('取消')),
+          ),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+            onPressed: () => Navigator.pop(context, true),
+            icon: const Icon(Icons.delete_outline_rounded),
+            label: Text(
+              context
+                  .tr('删除 {count} 首云副本')
+                  .replaceAll('{count}', '${selected.length}'),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() {
+      _deletingSelected = true;
+      _deleteCompleted = 0;
+      _deleteTotal = selected.length;
+    });
+    final controller = ref.read(cloudSyncControllerProvider.notifier);
+    var removed = 0;
+    final failedIds = <String>{};
+    for (var index = 0; index < selected.length; index += 1) {
+      final track = selected[index];
+      if (!mounted) return;
+      final success = await controller.deleteCloudTrack(track);
+      if (!mounted) return;
+      if (success) {
+        removed += 1;
+        _selectedCloudTrackIds.remove(track.id);
+      } else {
+        failedIds.add(track.id);
+      }
+      final offline = ref.read(cloudSyncControllerProvider).offline;
+      if (!success && offline) {
+        failedIds.addAll(
+          selected.skip(index + 1).map((remaining) => remaining.id),
+        );
+      }
+      setState(() => _deleteCompleted = offline ? selected.length : index + 1);
+      // One offline failure is enough evidence that the remaining requests
+      // cannot succeed. Stop immediately instead of making a phone wait for
+      // the same timeout once per selected cloud track.
+      if (!success && offline) break;
+    }
+    if (!mounted) return;
+    setState(() {
+      _deletingSelected = false;
+      _selectedCloudTrackIds
+        ..clear()
+        ..addAll(failedIds);
+      _selecting = failedIds.isNotEmpty;
+      _deleteCompleted = 0;
+      _deleteTotal = 0;
+    });
+    showLatestSnackBar(
+      context,
+      SnackBar(
+        content: Text(
+          failedIds.isEmpty
+              ? context
+                    .tr('已从云端删除 {removed} 首歌曲，本机文件保持不变。')
+                    .replaceAll('{removed}', '$removed')
+              : context
+                    .tr('已删除 {removed} 首，{failed} 首未能删除，请稍后重试。')
+                    .replaceAll('{removed}', '$removed')
+                    .replaceAll('{failed}', '${failedIds.length}'),
+        ),
+      ),
+    );
   }
 
   Future<void> _playCloudTrack(
@@ -690,9 +830,13 @@ class _CloudLibraryPanelState extends ConsumerState<_CloudLibraryPanel> {
                 track: track,
                 removing: sync.removingCloudTrackId == track.id,
                 opening: _openingCloudTrackId == track.id,
+                selecting: _selecting,
+                selected: _selectedCloudTrackIds.contains(track.id),
+                selectionEnabled: !_deletingSelected,
                 subtitle:
                     '${context.metadata(_displayArtist(track))} · ${_formatDuration(track.duration)} · ${_formatBytes(track.fileSize)}',
                 onPlay: () => _playCloudTrack(track, tracks),
+                onSelect: () => _toggleTrackSelection(track),
                 onDelete: () => _confirmDelete(track),
               );
             }
@@ -713,9 +857,13 @@ class _CloudLibraryPanelState extends ConsumerState<_CloudLibraryPanel> {
                 track: track,
                 removing: sync.removingCloudTrackId == track.id,
                 opening: _openingCloudTrackId == track.id,
+                selecting: _selecting,
+                selected: _selectedCloudTrackIds.contains(track.id),
+                selectionEnabled: !_deletingSelected,
                 subtitle:
                     '${track.album.isEmpty ? context.tr('未标注专辑') : context.metadata(track.album)} · ${_formatDuration(track.duration)} · ${_formatBytes(track.fileSize)}',
                 onPlay: () => _playCloudTrack(track, group.value),
+                onSelect: () => _toggleTrackSelection(track),
                 onDelete: () => _confirmDelete(track),
               ),
             );
@@ -941,67 +1089,103 @@ class _CloudLibraryPanelState extends ConsumerState<_CloudLibraryPanel> {
     final controller = ref.read(cloudSyncControllerProvider.notifier);
     final tracks = sync.cloudTracks;
     final visibleTracks = _visibleTracks(tracks);
-    return _CloudPanel(
-      icon: Icons.cloud_queue_outlined,
-      title: '云端资料库',
-      description: sync.offline
-          ? '离线状态，无法连接至云端。本地曲库和播放仍可正常使用。'
-          : sync.loadingCloudTracks
-          ? '正在读取云端歌曲…'
-          : '集中浏览和管理云端曲目。删除仅影响云副本，不会删除本机文件。',
-      badge: sync.offline
-          ? '离线'
-          : (sync.loadingCloudTracks ? '读取中' : '${tracks.length} 首'),
-      glassTint: widget.glassTint,
-      actions: [
-        OutlinedButton.icon(
-          onPressed: sync.loadingCloudTracks
-              ? null
-              : controller.loadCloudTracks,
-          icon: const Icon(Icons.refresh_rounded),
-          label: const Text('刷新云内容'),
-        ),
-      ],
-      content: sync.loadingCloudTracks && tracks.isEmpty
-          ? const Padding(
-              padding: EdgeInsets.symmetric(vertical: 20),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          : sync.offline && tracks.isEmpty
-          ? const _CloudOfflineState()
-          : tracks.isEmpty
-          ? const Padding(
-              padding: EdgeInsets.symmetric(vertical: 12),
-              child: Text('云空间还没有歌曲。完成一次同步后，歌曲会显示在这里。'),
-            )
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildControls(context, tracks),
-                const SizedBox(height: 14),
-                Text(
-                  _resultDescription(
-                    visibleCount: _view == _CloudLibraryView.tracks
-                        ? visibleTracks.length
-                        : _artistGroups(visibleTracks).length,
-                    totalCount: tracks.length,
+    return PopScope(
+      canPop: !_selecting,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _selecting) _setSelecting(false);
+      },
+      child: _CloudPanel(
+        icon: Icons.cloud_queue_outlined,
+        title: '云端资料库',
+        description: sync.offline
+            ? '离线状态，无法连接至云端。本地曲库和播放仍可正常使用。'
+            : sync.loadingCloudTracks
+            ? '正在读取云端歌曲…'
+            : '集中浏览和管理云端曲目。删除仅影响云副本，不会删除本机文件。',
+        badge: sync.offline
+            ? '离线'
+            : (sync.loadingCloudTracks ? '读取中' : '${tracks.length} 首'),
+        glassTint: widget.glassTint,
+        actions: [
+          OutlinedButton.icon(
+            onPressed: sync.loadingCloudTracks
+                ? null
+                : controller.loadCloudTracks,
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('刷新云内容'),
+          ),
+        ],
+        content: sync.loadingCloudTracks && tracks.isEmpty
+            ? const Padding(
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            : sync.offline && tracks.isEmpty
+            ? const _CloudOfflineState()
+            : tracks.isEmpty
+            ? const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Text('云空间还没有歌曲。完成一次同步后，歌曲会显示在这里。'),
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildControls(context, tracks),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _resultDescription(
+                            visibleCount: _view == _CloudLibraryView.tracks
+                                ? visibleTracks.length
+                                : _artistGroups(visibleTracks).length,
+                            totalCount: tracks.length,
+                          ),
+                          style: const TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      if (!_selecting)
+                        TextButton.icon(
+                          onPressed: () => _setSelecting(true),
+                          icon: const Icon(Icons.checklist_rounded, size: 18),
+                          label: Text(context.tr('批量管理')),
+                        ),
+                    ],
                   ),
-                  style: const TextStyle(
-                    color: AppColors.textSecondary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                if (visibleTracks.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 24),
-                    child: Center(child: Text('没有匹配的云端曲目。')),
-                  )
-                else
-                  _buildBrowser(context, sync, visibleTracks),
-              ],
-            ),
+                  if (_selecting) ...[
+                    const SizedBox(height: 8),
+                    _CloudBatchBar(
+                      tint: widget.glassTint,
+                      selected: _selectedCloudTrackIds
+                          .where(
+                            tracks.map((track) => track.id).toSet().contains,
+                          )
+                          .length,
+                      total: tracks.length,
+                      deleting: _deletingSelected,
+                      completed: _deleteCompleted,
+                      deleteTotal: _deleteTotal,
+                      onSelectAll: () => _toggleSelectAll(tracks),
+                      onDelete: () => _confirmDeleteSelected(tracks),
+                      onClose: () => _setSelecting(false),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  if (visibleTracks.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 24),
+                      child: Center(child: Text('没有匹配的云端曲目。')),
+                    )
+                  else
+                    _buildBrowser(context, sync, visibleTracks),
+                ],
+              ),
+      ),
     );
   }
 }
@@ -1197,6 +1381,127 @@ class _CloudJellyChoice extends StatelessWidget {
   }
 }
 
+class _CloudBatchBar extends StatelessWidget {
+  const _CloudBatchBar({
+    required this.tint,
+    required this.selected,
+    required this.total,
+    required this.deleting,
+    required this.completed,
+    required this.deleteTotal,
+    required this.onSelectAll,
+    required this.onDelete,
+    required this.onClose,
+  });
+
+  final Color tint;
+  final int selected;
+  final int total;
+  final bool deleting;
+  final int completed;
+  final int deleteTotal;
+  final VoidCallback onSelectAll;
+  final VoidCallback onDelete;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final allSelected = total > 0 && selected == total;
+    final partiallySelected = selected > 0 && selected < total;
+    final status = deleting
+        ? context
+              .tr('正在删除 {completed} / {total} 首')
+              .replaceAll('{completed}', '$completed')
+              .replaceAll('{total}', '$deleteTotal')
+        : context
+              .tr('已选 {selected} / {total} 首')
+              .replaceAll('{selected}', '$selected')
+              .replaceAll('{total}', '$total');
+    return Container(
+      padding: const EdgeInsets.fromLTRB(8, 7, 6, 7),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.43),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.72)),
+        boxShadow: [
+          BoxShadow(
+            color: tint.withValues(alpha: 0.09),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Tooltip(
+            message: context.tr(allSelected ? '取消全选' : '全选全部云端歌曲'),
+            child: InkWell(
+              onTap: deleting ? null : onSelectAll,
+              borderRadius: BorderRadius.circular(10),
+              child: Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Checkbox(
+                      value: allSelected,
+                      tristate: partiallySelected,
+                      activeColor: tint,
+                      onChanged: deleting ? null : (_) => onSelectAll(),
+                    ),
+                    Text(
+                      context.tr(allSelected ? '取消全选' : '全选'),
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Text(
+              status,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          if (deleting)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 12),
+              child: SizedBox.square(
+                dimension: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          else
+            FilledButton.icon(
+              onPressed: selected == 0 ? null : onDelete,
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFD6405D),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                minimumSize: const Size(0, 40),
+              ),
+              icon: const Icon(Icons.delete_outline_rounded, size: 18),
+              label: Text(context.tr('删除')),
+            ),
+          IconButton(
+            tooltip: context.tr('退出批量管理'),
+            onPressed: deleting ? null : onClose,
+            icon: const Icon(Icons.close_rounded),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _CloudArtistGroup extends StatelessWidget {
   const _CloudArtistGroup({
     required this.artist,
@@ -1299,16 +1604,24 @@ class _CloudTrackRow extends StatelessWidget {
     required this.track,
     required this.removing,
     required this.opening,
+    required this.selecting,
+    required this.selected,
+    required this.selectionEnabled,
     required this.subtitle,
     required this.onPlay,
+    required this.onSelect,
     required this.onDelete,
   });
 
   final CloudTrackSummary track;
   final bool removing;
   final bool opening;
+  final bool selecting;
+  final bool selected;
+  final bool selectionEnabled;
   final String subtitle;
   final VoidCallback onPlay;
+  final VoidCallback onSelect;
   final VoidCallback onDelete;
 
   @override
@@ -1316,13 +1629,25 @@ class _CloudTrackRow extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.only(left: 12, right: 6, top: 7, bottom: 7),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.24),
+        color: selected
+            ? Color.alphaBlend(
+                AppColors.accent.withValues(alpha: 0.15),
+                Colors.white.withValues(alpha: 0.32),
+              )
+            : Colors.white.withValues(alpha: 0.24),
         borderRadius: BorderRadius.circular(12),
+        border: selected
+            ? Border.all(color: AppColors.accent.withValues(alpha: 0.30))
+            : null,
       ),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: opening || removing ? null : onPlay,
-        onSecondaryTapDown: opening || removing
+        onTap: opening || removing || (selecting && !selectionEnabled)
+            ? null
+            : selecting
+            ? onSelect
+            : onPlay,
+        onSecondaryTapDown: selecting || opening || removing
             ? null
             : (details) async {
                 final overlay = Navigator.of(context).overlay;
@@ -1360,6 +1685,14 @@ class _CloudTrackRow extends StatelessWidget {
               },
         child: Row(
           children: [
+            if (selecting) ...[
+              Checkbox(
+                value: selected,
+                activeColor: AppColors.accent,
+                onChanged: selectionEnabled ? (_) => onSelect() : null,
+              ),
+              const SizedBox(width: 2),
+            ],
             Icon(
               track.mediaType == 'video'
                   ? Icons.movie_outlined
@@ -1391,17 +1724,18 @@ class _CloudTrackRow extends StatelessWidget {
                 ],
               ),
             ),
-            IconButton(
-              tooltip: context.tr('从云端删除'),
-              onPressed: removing || opening ? null : onDelete,
-              icon: removing || opening
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.delete_outline_rounded),
-            ),
+            if (!selecting)
+              IconButton(
+                tooltip: context.tr('从云端删除'),
+                onPressed: removing || opening ? null : onDelete,
+                icon: removing || opening
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.delete_outline_rounded),
+              ),
           ],
         ),
       ),

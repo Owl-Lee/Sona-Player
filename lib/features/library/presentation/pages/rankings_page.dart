@@ -10,10 +10,54 @@ import '../../../player/application/player_controller.dart';
 import '../../../settings/application/appearance_controller.dart';
 import '../../../settings/presentation/widgets/appearance_backdrop.dart';
 import '../../application/library_controller.dart';
+import '../../domain/track.dart';
 import '../library_actions.dart';
 import '../widgets/track_artwork.dart';
 
 enum RankingPeriod { week, month, all }
+
+DateTime _periodAnchor(RankingPeriod period, DateTime now) {
+  return switch (period) {
+    RankingPeriod.week => DateTime(now.year, now.month, now.day),
+    RankingPeriod.month => DateTime(now.year, now.month),
+    RankingPeriod.all => DateTime.fromMillisecondsSinceEpoch(0),
+  };
+}
+
+String _rankingLibraryRevision(List<Track> tracks) {
+  final revision = StringBuffer();
+  for (final track in tracks) {
+    revision
+      ..write(track.id)
+      ..write(':')
+      ..write(track.playCount)
+      ..write(';');
+  }
+  return revision.toString();
+}
+
+class _RankingQueryKey {
+  const _RankingQueryKey({
+    required this.period,
+    required this.periodAnchor,
+    required this.libraryRevision,
+  });
+
+  final RankingPeriod period;
+  final DateTime periodAnchor;
+  final String libraryRevision;
+
+  @override
+  bool operator ==(Object other) {
+    return other is _RankingQueryKey &&
+        other.period == period &&
+        other.periodAnchor == periodAnchor &&
+        other.libraryRevision == libraryRevision;
+  }
+
+  @override
+  int get hashCode => Object.hash(period, periodAnchor, libraryRevision);
+}
 
 class RankingsPage extends ConsumerStatefulWidget {
   const RankingsPage({super.key});
@@ -24,10 +68,20 @@ class RankingsPage extends ConsumerStatefulWidget {
 
 class _RankingsPageState extends ConsumerState<RankingsPage> {
   var _period = RankingPeriod.week;
+  _RankingQueryKey? _countsKey;
+  Future<Map<int, int>>? _countsFuture;
 
-  Future<Map<int, int>> _counts(LibraryState state) {
+  Future<Map<int, int>> _countsFor(List<Track> tracks) {
     final now = DateTime.now();
-    return switch (_period) {
+    final key = _RankingQueryKey(
+      period: _period,
+      periodAnchor: _periodAnchor(_period, now),
+      libraryRevision: _rankingLibraryRevision(tracks),
+    );
+    if (_countsFuture != null && _countsKey == key) return _countsFuture!;
+
+    _countsKey = key;
+    return _countsFuture = switch (_period) {
       RankingPeriod.week =>
         ref
             .read(libraryControllerProvider.notifier)
@@ -37,15 +91,19 @@ class _RankingsPageState extends ConsumerState<RankingsPage> {
             .read(libraryControllerProvider.notifier)
             .playCountsSince(DateTime(now.year, now.month, 1)),
       RankingPeriod.all => Future.value({
-        for (final track in state.tracks) track.id!: track.playCount,
+        for (final track in tracks) track.id!: track.playCount,
       }),
     };
   }
 
   @override
   Widget build(BuildContext context) {
-    final state = ref.watch(libraryControllerProvider);
-    final current = ref.watch(playerControllerProvider).currentTrack;
+    final tracks = ref.watch(
+      libraryControllerProvider.select((state) => state.tracks),
+    );
+    final currentTrackId = ref.watch(
+      playerControllerProvider.select((state) => state.currentTrack?.id),
+    );
     final appearance = ref.watch(appearanceControllerProvider);
     final mobile = MediaQuery.sizeOf(context).width < 760;
     final content = MediaQuery(
@@ -128,14 +186,14 @@ class _RankingsPageState extends ConsumerState<RankingsPage> {
               const SizedBox(height: 14),
               Expanded(
                 child: FutureBuilder<Map<int, int>>(
-                  future: _counts(state),
+                  future: _countsFor(tracks),
                   builder: (context, snapshot) {
                     if (!snapshot.hasData) {
                       return const Center(child: CircularProgressIndicator());
                     }
                     final counts = snapshot.data!;
-                    final tracks =
-                        state.tracks
+                    final rankedTracks =
+                        tracks
                             .where((track) => (counts[track.id] ?? 0) > 0)
                             .toList()
                           ..sort(
@@ -143,7 +201,9 @@ class _RankingsPageState extends ConsumerState<RankingsPage> {
                               counts[a.id] ?? 0,
                             ),
                           );
-                    if (tracks.isEmpty) return const _RankingEmptyState();
+                    if (rankedTracks.isEmpty) {
+                      return const _RankingEmptyState();
+                    }
                     return LiquidGlass(
                       borderRadius: 22,
                       blur: 8,
@@ -181,10 +241,10 @@ class _RankingsPageState extends ConsumerState<RankingsPage> {
                                   parent: ClampingScrollPhysics(),
                                 ),
                                 itemExtent: 62,
-                                itemCount: tracks.length,
+                                itemCount: rankedTracks.length,
                                 itemBuilder: (context, index) {
-                                  final track = tracks[index];
-                                  final selected = current?.id == track.id;
+                                  final track = rankedTracks[index];
+                                  final selected = currentTrackId == track.id;
                                   return Padding(
                                     padding: const EdgeInsets.only(bottom: 5),
                                     child: DecoratedBox(
@@ -293,7 +353,7 @@ class _RankingsPageState extends ConsumerState<RankingsPage> {
                                             onTap: () => playTrack(
                                               ref,
                                               track,
-                                              tracks,
+                                              rankedTracks,
                                               source: '听歌排行',
                                             ),
                                           ),

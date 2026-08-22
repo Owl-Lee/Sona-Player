@@ -99,7 +99,9 @@ class _HoverVolumeButtonState extends ConsumerState<HoverVolumeButton> {
 
   @override
   Widget build(BuildContext context) {
-    final volume = ref.watch(playerControllerProvider).volume;
+    final volume = ref.watch(
+      playerControllerProvider.select((state) => state.volume),
+    );
     final controller = ref.read(playerControllerProvider.notifier);
     final icon = volume == 0
         ? Icons.volume_off_rounded
@@ -147,7 +149,9 @@ class _HoverVolumePopover extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final current = ref.watch(playerControllerProvider).volume;
+    final current = ref.watch(
+      playerControllerProvider.select((state) => state.volume),
+    );
     final controller = ref.read(playerControllerProvider.notifier);
     return Material(
       type: MaterialType.transparency,

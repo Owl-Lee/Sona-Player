@@ -171,6 +171,14 @@ class TrackIdentificationResult {
   bool get found => candidate != null;
 }
 
+/// Every persisted track is eligible for the explicit full-library scan.
+///
+/// This deliberately differs from [needsSmartOrganization], which is only a
+/// lightweight import hint. A plausible-looking value such as `Hi-res` can
+/// still be bad metadata and must not prevent an explicit user-requested scan.
+List<Track> fullLibraryIdentificationTargets(Iterable<Track> tracks) =>
+    tracks.where((track) => track.id != null).toList(growable: false);
+
 /// Whether a track still resembles raw download metadata and should be
 /// offered to the optional online/fingerprint organizer.
 ///

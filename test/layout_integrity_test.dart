@@ -25,6 +25,44 @@ void main() {
     expect(tester.getSize(find.byKey(childKey)).height, 528);
   });
 
+  testWidgets('mobile shell keeps an 8px gap above the compact player', (
+    tester,
+  ) async {
+    const surfaceKey = ValueKey('mobile-list-surface');
+    const listKey = ValueKey('mobile-list-viewport');
+    const playerKey = ValueKey('compact-player');
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            height: 539,
+            child: Column(
+              children: [
+                Expanded(
+                  child: Material(
+                    key: surfaceKey,
+                    child: WholeItemViewport(
+                      itemExtent: 72,
+                      child: ColoredBox(key: listKey, color: Colors.blue),
+                    ),
+                  ),
+                ),
+                SizedBox(height: 8),
+                SizedBox(key: playerKey, height: 60),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final surfaceRect = tester.getRect(find.byKey(surfaceKey));
+    final playerRect = tester.getRect(find.byKey(playerKey));
+    expect(playerRect.top - surfaceRect.bottom, 8);
+    expect(surfaceRect.height, 471);
+    expect(tester.getSize(find.byKey(listKey)).height, 432);
+  });
+
   testWidgets('vinyl layout center is not shifted by the tonearm', (
     tester,
   ) async {

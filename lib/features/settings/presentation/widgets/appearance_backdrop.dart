@@ -5,6 +5,33 @@ import 'package:flutter/material.dart';
 
 import '../../application/appearance_controller.dart';
 
+const _staticAmbientPresetIds = {'navy_tide', 'magma'};
+
+/// Whether a wallpaper should keep a continuous ambient ticker alive.
+///
+/// Keeping this decision pure makes it difficult to accidentally reintroduce
+/// a full-screen ticker for a static skin, an obscured route, or a user who has
+/// asked the operating system to reduce motion.
+bool shouldAnimateAmbientSkin({
+  required String presetId,
+  required bool usesCustomBackground,
+  required bool animationsDisabled,
+  required bool routeIsCurrent,
+}) {
+  return !usesCustomBackground &&
+      !animationsDisabled &&
+      routeIsCurrent &&
+      !_staticAmbientPresetIds.contains(presetId);
+}
+
+int _decodeBucket(double physicalExtent) {
+  const buckets = <int>[720, 1080, 1440, 1920, 2560];
+  for (final bucket in buckets) {
+    if (physicalExtent <= bucket) return bucket;
+  }
+  return buckets.last;
+}
+
 class AppearanceBackdrop extends StatelessWidget {
   const AppearanceBackdrop({
     super.key,
@@ -21,7 +48,10 @@ class AppearanceBackdrop extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final compact = MediaQuery.sizeOf(context).width < 760;
+    final mediaQuery = MediaQuery.maybeOf(context);
+    final viewport = mediaQuery?.size ?? const Size(1280, 720);
+    final pixelRatio = mediaQuery?.devicePixelRatio ?? 1;
+    final compact = viewport.width < 760;
     final preset = appearance.preset;
     final customFile = appearance.usesCustom
         ? File(appearance.customBackgroundPath!)
@@ -33,11 +63,18 @@ class AppearanceBackdrop extends StatelessWidget {
     final builtInAssetPath = !compact && !appearance.usesCustom
         ? preset.desktopAssetPath ?? portraitAssetPath
         : portraitAssetPath;
-    final image = customFile != null && customFile.existsSync()
+    final sourceImage = customFile != null && customFile.existsSync()
         ? FileImage(customFile) as ImageProvider
         : builtInAssetPath == null
         ? null
         : AssetImage(builtInAssetPath) as ImageProvider;
+    final image = sourceImage == null
+        ? null
+        : ResizeImage.resizeIfNeeded(
+            _decodeBucket(viewport.width * pixelRatio),
+            _decodeBucket(viewport.height * pixelRatio),
+            sourceImage,
+          );
 
     final imageKey = customFile != null && customFile.existsSync()
         ? customFile.path
@@ -126,7 +163,12 @@ class AppearanceBackdrop extends StatelessWidget {
                   gaplessPlayback: true,
                 ),
         ),
-        if (!appearance.usesCustom)
+        if (shouldAnimateAmbientSkin(
+          presetId: preset.id,
+          usesCustomBackground: appearance.usesCustom,
+          animationsDisabled: mediaQuery?.disableAnimations ?? false,
+          routeIsCurrent: ModalRoute.of(context)?.isCurrent ?? true,
+        ))
           IgnorePointer(child: _AmbientSkinEffect(presetId: preset.id)),
         AnimatedContainer(
           duration: const Duration(milliseconds: 170),
@@ -152,14 +194,29 @@ class _AmbientSkinEffect extends StatefulWidget {
 
 class _AmbientSkinEffectState extends State<_AmbientSkinEffect>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: const Duration(seconds: 22),
-  )..repeat();
+  static const _durationSeconds = 22;
+  static const _targetFramesPerSecond = 24;
+  static const _frameCount = _durationSeconds * _targetFramesPerSecond;
+
+  late final ValueNotifier<int> _frame = ValueNotifier<int>(0);
+  late final AnimationController _controller =
+      AnimationController(
+          vsync: this,
+          duration: const Duration(seconds: _durationSeconds),
+        )
+        ..addListener(_updateFrame)
+        ..repeat();
+
+  void _updateFrame() {
+    final next = (_controller.value * _frameCount).floor() % _frameCount;
+    if (_frame.value != next) _frame.value = next;
+  }
 
   @override
   void dispose() {
+    _controller.removeListener(_updateFrame);
     _controller.dispose();
+    _frame.dispose();
     super.dispose();
   }
 
@@ -167,9 +224,12 @@ class _AmbientSkinEffectState extends State<_AmbientSkinEffect>
   Widget build(BuildContext context) {
     return RepaintBoundary(
       child: AnimatedBuilder(
-        animation: _controller,
+        animation: _frame,
         builder: (context, _) => CustomPaint(
-          painter: _AmbientSkinPainter(widget.presetId, _controller.value),
+          painter: _AmbientSkinPainter(
+            widget.presetId,
+            _frame.value / _frameCount,
+          ),
           size: Size.infinite,
           isComplex: false,
           willChange: true,

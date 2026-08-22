@@ -115,11 +115,11 @@ const translations = {
   '开始使用': 'Get started',
   '现在，把自己的音乐': 'Now bring your music',
   '带回自己的播放器。': 'back to your own player.',
-  'Sona 0.4.50 公开预览版。无需订阅，下载即用。': 'Sona 0.4.50 public preview. No subscription—download and listen.',
+  'Sona 0.4.51 公开预览版。无需订阅，下载即用。': 'Sona 0.4.51 public preview. No subscription—download and listen.',
   '适用于': 'For',
   '64 位便携版 · ZIP': '64-bit portable · ZIP',
   '直接安装 · APK': 'Direct install · APK',
-  '当前为公开预览版。Android APK 使用开发签名，系统可能提示“未知来源”；请只从本页面或 GitHub Release 下载。': 'This is a public preview. The Android APK uses a development signature, so your system may warn about an unknown source. Download only from this page or GitHub Releases.',
+  '当前为公开预览版。Android 0.4.50 无法直接覆盖升级到 0.4.51，请先备份并卸载旧版一次；Windows 可能显示 SmartScreen 或“未知发布者”提示。请只从本页面或 GitHub Release 下载。': 'This is a public preview. Android 0.4.50 cannot be updated in place to 0.4.51; back up first and uninstall it once. Windows may show SmartScreen or an Unknown publisher warning. Download only from this page or GitHub Releases.',
   '为自己的音乐，做一个真正属于自己的空间。': 'A space that truly belongs to you and your music.',
 };
 

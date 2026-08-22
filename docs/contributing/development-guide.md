@@ -23,7 +23,7 @@ Android APK:
 flutter build apk --release
 ```
 
-The repository does not store a local Flutter SDK path, desktop shortcuts, or machine-specific build paths. Configure those in your own toolchain.
+Android release builds require your own local `android/key.properties` and keystore. The official Sona release key is deliberately never stored in this repository; contributors should use a separate development or test key and must not distribute builds as official Sona packages. The repository also does not store a local Flutter SDK path, desktop shortcuts, or machine-specific build paths. Configure those in your own toolchain.
 
 ## 2. Configuration boundary
 
@@ -84,7 +84,7 @@ Keep each commit focused and describe the user-visible outcome. Stage only files
 
 ### 1. 开始之前
 
-运行上方命令获取依赖、静态分析、执行测试并启动 Windows 版。发布构建使用 `flutter build windows --release`，Android APK 使用 `flutter build apk --release`。仓库不保存本机 Flutter SDK、桌面快捷方式或构建机绝对路径，请在自己的工具链中配置。
+运行上方命令获取依赖、静态分析、执行测试并启动 Windows 版。发布构建使用 `flutter build windows --release`，Android APK 使用 `flutter build apk --release`。Android Release 构建需要自行在本机配置 `android/key.properties` 与 keystore；Sona 官方发布私钥不会进入公开仓库，贡献者应使用独立的开发或测试签名，也不能把自行构建的包冒充官方版本分发。仓库同样不保存本机 Flutter SDK、桌面快捷方式或构建机绝对路径，请在自己的工具链中配置。
 
 ### 2. 配置边界
 

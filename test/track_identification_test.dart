@@ -83,4 +83,39 @@ void main() {
       );
     });
   });
+
+  group('fullLibraryIdentificationTargets', () {
+    Track track({
+      required int? id,
+      required String title,
+      String artist = '歌手',
+    }) => Track(
+      id: id,
+      path: 'E:\\Music\\$title.mp3',
+      title: title,
+      artist: artist,
+      album: '',
+      duration: const Duration(minutes: 4),
+      fileSize: 1024,
+      contentHash: 'hash-$title',
+      importedAt: DateTime(2026),
+    );
+
+    test('scans every persisted track and keeps library order', () {
+      final clean = track(id: 1, title: '像我这样的人', artist: '毛不易');
+      final disguised = track(id: 2, title: '私奔到月球', artist: 'Hi-res');
+      final suspicious = track(id: 3, title: 'IMG_5921', artist: '未知歌手');
+      final transient = track(id: null, title: '尚未入库');
+
+      expect(
+        fullLibraryIdentificationTargets([
+          clean,
+          disguised,
+          suspicious,
+          transient,
+        ]),
+        [clean, disguised, suspicious],
+      );
+    });
+  });
 }

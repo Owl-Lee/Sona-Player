@@ -21,7 +21,9 @@ class PlaybackModeButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final mode = ref.watch(playerControllerProvider).playbackMode;
+    final mode = ref.watch(
+      playerControllerProvider.select((state) => state.playbackMode),
+    );
     final controller = ref.read(playerControllerProvider.notifier);
     final label = switch (mode) {
       VaultPlaybackMode.loop => '列表循环',

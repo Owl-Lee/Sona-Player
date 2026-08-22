@@ -31,13 +31,11 @@ Future<void> smartOrganizeTracks(
   WidgetRef ref,
   Iterable<Track> tracks,
 ) async {
-  final targets = tracks
-      .where((track) => track.id != null && needsSmartOrganization(track))
-      .toList(growable: false);
+  final targets = fullLibraryIdentificationTargets(tracks);
   if (targets.isEmpty) {
     showLatestSnackBar(
       context,
-      const SnackBar(content: Text('没有发现需要整理的低可信度歌曲。')),
+      SnackBar(content: Text(context.tr('曲库里没有可识别的歌曲。'))),
     );
     return;
   }
@@ -45,31 +43,32 @@ Future<void> smartOrganizeTracks(
   final start = await showDialog<bool>(
     context: context,
     builder: (dialogContext) => AlertDialog(
-      title: const Row(
+      title: Row(
         children: [
-          Icon(Icons.auto_awesome_rounded),
-          SizedBox(width: 10),
-          Text('一键智能整理'),
+          const Icon(Icons.fingerprint_rounded),
+          const SizedBox(width: 10),
+          Text(context.tr('全面识别')),
         ],
       ),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 470),
         child: Text(
-          '发现 ${targets.length} 首信息不完整或可信度较低的歌曲。\n\n'
-          '将优先使用音频声纹加强识别（已配置时），'
-          '再使用免费公开曲库校准。结果会先给你预览，'
-          '确认后才会修改曲库。',
+          context
+              .tr(
+                '将逐首扫描曲库中的 {count} 首歌曲。Windows 且已配置 AcoustID 时优先使用音频声纹；其他情况使用标签、文件名和免费公开曲库。所有建议都会先预览，确认后才修改曲库。\n\n公开曲库限制为每秒最多 1 次请求，歌曲较多时会花更长时间。',
+              )
+              .replaceAll('{count}', '${targets.length}'),
         ),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(dialogContext, false),
-          child: const Text('暂不整理'),
+          child: Text(context.tr('暂不扫描')),
         ),
         FilledButton.icon(
           onPressed: () => Navigator.pop(dialogContext, true),
           icon: const Icon(Icons.search_rounded),
-          label: const Text('开始识别'),
+          label: Text(context.tr('开始全面识别')),
         ),
       ],
     ),
@@ -85,7 +84,7 @@ Future<void> smartOrganizeTracks(
   if (suggestions.isEmpty) {
     showLatestSnackBar(
       context,
-      const SnackBar(content: Text('没有找到可靠的批量整理结果。')),
+      SnackBar(content: Text(context.tr('没有发现需要修改的歌曲信息。'))),
     );
     return;
   }
@@ -107,7 +106,11 @@ Future<void> smartOrganizeTracks(
   if (!context.mounted) return;
   showLatestSnackBar(
     context,
-    SnackBar(content: Text('已完成 $applied 首歌曲的智能整理。')),
+    SnackBar(
+      content: Text(
+        context.tr('已完成 {count} 首歌曲的信息校准。').replaceAll('{count}', '$applied'),
+      ),
+    ),
   );
 }
 
@@ -184,7 +187,7 @@ class _SmartScanDialogState extends ConsumerState<_SmartScanDialog> {
     final total = widget.tracks.length;
     final current = _completed >= total ? total : _completed + 1;
     return AlertDialog(
-      title: const Text('正在智能整理'),
+      title: Text(context.tr('正在全面识别')),
       content: SizedBox(
         width: 430,
         child: Column(

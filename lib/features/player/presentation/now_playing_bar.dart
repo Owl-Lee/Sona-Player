@@ -19,7 +19,12 @@ class NowPlayingBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final playback = ref.watch(playerControllerProvider);
+    final track = ref.watch(
+      playerControllerProvider.select((playback) => playback.currentTrack),
+    );
+    final isPlaying = ref.watch(
+      playerControllerProvider.select((playback) => playback.isPlaying),
+    );
     final controller = ref.read(playerControllerProvider.notifier);
     final appearance = ref.watch(appearanceControllerProvider);
     final accent = appearance.accent;
@@ -33,12 +38,6 @@ class NowPlayingBar extends ConsumerWidget {
         ThemeData.estimateBrightnessForColor(accent) == Brightness.dark
         ? Colors.white
         : AppColors.ink;
-    final track = playback.currentTrack;
-    final progress = playback.duration.inMilliseconds == 0
-        ? 0.0
-        : (playback.position.inMilliseconds / playback.duration.inMilliseconds)
-              .clamp(0.0, 1.0);
-
     if (compact) {
       return Container(
         margin: const EdgeInsets.fromLTRB(12, 0, 12, 4),
@@ -61,12 +60,7 @@ class NowPlayingBar extends ConsumerWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            LinearProgressIndicator(
-              minHeight: 2,
-              value: progress,
-              color: accent,
-              backgroundColor: Colors.transparent,
-            ),
+            _CompactPlaybackProgress(accent: accent),
             SizedBox(
               height: 60,
               child: Row(
@@ -129,7 +123,7 @@ class NowPlayingBar extends ConsumerWidget {
                         foregroundColor: accentForeground,
                       ),
                       child: Icon(
-                        playback.isPlaying
+                        isPlaying
                             ? Icons.pause_rounded
                             : Icons.play_arrow_rounded,
                         size: 26,
@@ -206,13 +200,6 @@ class NowPlayingBar extends ConsumerWidget {
 
     final currentTrack = track;
 
-    final maxPosition = playback.duration.inMilliseconds > 0
-        ? playback.duration.inMilliseconds.toDouble()
-        : 1.0;
-    final currentPosition = playback.position.inMilliseconds
-        .clamp(0, maxPosition.toInt())
-        .toDouble();
-
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 0, 18, 16),
       child: LiquidGlass(
@@ -234,13 +221,7 @@ class NowPlayingBar extends ConsumerWidget {
                       overlayShape: SliderComponentShape.noOverlay,
                       trackHeight: 3,
                     ),
-                    child: _DeferredSeekSlider(
-                      value: currentPosition,
-                      max: maxPosition,
-                      enabled: true,
-                      accent: accent,
-                      onSeek: controller.seek,
-                    ),
+                    child: _PlaybackSeekControl(accent: accent),
                   ),
                 ),
                 Expanded(
@@ -352,7 +333,7 @@ class NowPlayingBar extends ConsumerWidget {
                                       elevation: 5,
                                     ),
                                     child: Icon(
-                                      playback.isPlaying
+                                      isPlaying
                                           ? Icons.pause_rounded
                                           : Icons.play_arrow_rounded,
                                       size: 31,
@@ -386,17 +367,9 @@ class NowPlayingBar extends ConsumerWidget {
                                 mainAxisAlignment: MainAxisAlignment.end,
                                 children: [
                                   if (!veryTight)
-                                    Text(
-                                      condensed
-                                          ? formatDuration(playback.position)
-                                          : '${formatDuration(playback.position)} / ${formatDuration(playback.duration)}',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.clip,
-                                      style: TextStyle(
-                                        color: mutedForeground,
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                      ),
+                                    _PlaybackTimeLabel(
+                                      condensed: condensed,
+                                      color: mutedForeground,
                                     ),
                                   if (!veryTight)
                                     SizedBox(width: condensed ? 2 : 8),
@@ -429,14 +402,103 @@ class NowPlayingBar extends ConsumerWidget {
         transitionDuration: const Duration(milliseconds: 150),
         reverseTransitionDuration: const Duration(milliseconds: 120),
         pageBuilder: (_, animation, _) => const NowPlayingPage(),
-        transitionsBuilder: (_, animation, _, child) => FadeTransition(
-          opacity: CurvedAnimation(
-            parent: animation,
-            curve: Curves.easeOutCubic,
-          ),
+        transitionsBuilder: (_, animation, _, child) => SlideTransition(
+          position:
+              Tween<Offset>(
+                begin: const Offset(0, 0.012),
+                end: Offset.zero,
+              ).animate(
+                CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+              ),
           child: child,
         ),
       ),
+    );
+  }
+}
+
+class _CompactPlaybackProgress extends ConsumerWidget {
+  const _CompactPlaybackProgress({required this.accent});
+
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final timing = ref.watch(
+      playerControllerProvider.select(
+        (playback) =>
+            (position: playback.position, duration: playback.duration),
+      ),
+    );
+    final progress = timing.duration.inMilliseconds == 0
+        ? 0.0
+        : (timing.position.inMilliseconds / timing.duration.inMilliseconds)
+              .clamp(0.0, 1.0);
+    return LinearProgressIndicator(
+      minHeight: 2,
+      value: progress,
+      color: accent,
+      backgroundColor: Colors.transparent,
+    );
+  }
+}
+
+class _PlaybackSeekControl extends ConsumerWidget {
+  const _PlaybackSeekControl({required this.accent});
+
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final timing = ref.watch(
+      playerControllerProvider.select(
+        (playback) =>
+            (position: playback.position, duration: playback.duration),
+      ),
+    );
+    final maxPosition = timing.duration.inMilliseconds > 0
+        ? timing.duration.inMilliseconds.toDouble()
+        : 1.0;
+    final currentPosition = timing.position.inMilliseconds
+        .clamp(0, maxPosition.toInt())
+        .toDouble();
+    return _DeferredSeekSlider(
+      value: currentPosition,
+      max: maxPosition,
+      enabled: true,
+      accent: accent,
+      onSeek: ref.read(playerControllerProvider.notifier).seek,
+    );
+  }
+}
+
+class _PlaybackTimeLabel extends ConsumerWidget {
+  const _PlaybackTimeLabel({required this.condensed, required this.color});
+
+  final bool condensed;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // The label only changes once per displayed second.  Selecting integer
+    // seconds avoids rebuilding it for every sub-second media-kit tick.
+    final timing = ref.watch(
+      playerControllerProvider.select(
+        (playback) => (
+          positionSeconds: playback.position.inSeconds,
+          durationSeconds: playback.duration.inSeconds,
+        ),
+      ),
+    );
+    final position = Duration(seconds: timing.positionSeconds);
+    final duration = Duration(seconds: timing.durationSeconds);
+    return Text(
+      condensed
+          ? formatDuration(position)
+          : '${formatDuration(position)} / ${formatDuration(duration)}',
+      maxLines: 1,
+      overflow: TextOverflow.clip,
+      style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w600),
     );
   }
 }
