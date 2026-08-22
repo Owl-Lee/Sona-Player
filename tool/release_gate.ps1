@@ -166,8 +166,10 @@ if ($ArtifactSet -ne 'none') {
     if ($ArtifactSet -in @('windows', 'all')) {
         if ($env:OS -eq 'Windows_NT') {
             $setupPath = Join-Path $artifactRoot 'Sona-Windows-x64-Setup.exe'
-            $setupVersion = (Get-Item -LiteralPath $setupPath).VersionInfo.ProductVersion
-            Assert-True (-not [string]::IsNullOrWhiteSpace($setupVersion)) 'Windows installer has no product version.'
+            $setupVersionRaw = (Get-Item -LiteralPath $setupPath).VersionInfo.ProductVersion
+            Assert-True (-not [string]::IsNullOrWhiteSpace($setupVersionRaw)) 'Windows installer has no product version.'
+            # Inno Setup pads this fixed-width VERSIONINFO field with spaces.
+            $setupVersion = $setupVersionRaw.Trim()
             Assert-True ($setupVersion -ceq $version) "Windows installer version '$setupVersion' does not match '$version'."
         }
 
