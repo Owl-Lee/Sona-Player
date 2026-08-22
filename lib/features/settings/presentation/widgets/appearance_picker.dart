@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/localization/sona_localizations.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../application/appearance_controller.dart';
 import 'image_crop_dialog.dart';
@@ -54,10 +55,13 @@ class AppearancePicker extends ConsumerWidget {
         final tileWidth = (constraints.maxWidth - ((count - 1) * gap)) / count;
         final childAspectRatio = tileWidth >= 210 ? 1.52 : 1.45;
         final pixelRatio = MediaQuery.devicePixelRatioOf(context);
-        final previewCacheWidth = (tileWidth * pixelRatio).ceil().clamp(
-          180,
-          512,
-        );
+        final previewCacheWidth =
+            (tileWidth * pixelRatio * appearance.effectsMode.imageDecodeScale)
+                .ceil()
+                .clamp(
+                  180,
+                  appearance.effectsMode.imageDecodeScale < 1 ? 384 : 512,
+                );
         final previewCacheHeight = (previewCacheWidth / childAspectRatio)
             .ceil()
             .clamp(120, 384);
@@ -87,7 +91,7 @@ class AppearancePicker extends ConsumerWidget {
             if (index < backgroundPresets.length) {
               final preset = backgroundPresets[index];
               return _BackgroundTile(
-                label: preset.name,
+                label: context.tr(preset.name),
                 selected:
                     !appearance.usesCustom && appearance.presetId == preset.id,
                 image: _presetImage(
@@ -114,7 +118,9 @@ class AppearancePicker extends ConsumerWidget {
             if (customIndex < customBackgrounds.length) {
               final background = customBackgrounds[customIndex];
               return _BackgroundTile(
-                label: '我的背景 ${customIndex + 1}',
+                label: context
+                    .tr('我的背景 {index}')
+                    .replaceAll('{index}', '${customIndex + 1}'),
                 selected:
                     appearance.usesCustom &&
                     appearance.customBackgroundPath == background.path,
@@ -150,7 +156,7 @@ class AppearancePicker extends ConsumerWidget {
                     9 / 16,
                     21 / 9,
                   ),
-                  title: '裁切播放器背景',
+                  title: context.tr('裁切播放器背景'),
                 );
                 if (!context.mounted || cropped == null) return;
                 await ref
@@ -302,14 +308,20 @@ class _ImportTile extends StatelessWidget {
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: AppColors.outline, width: 1),
           ),
-          child: const Column(
+          child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.add_photo_alternate_outlined, color: AppColors.accent),
-              SizedBox(height: 7),
+              const Icon(
+                Icons.add_photo_alternate_outlined,
+                color: AppColors.accent,
+              ),
+              const SizedBox(height: 7),
               Text(
-                '导入自己的背景',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+                context.tr('导入自己的背景'),
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ],
           ),

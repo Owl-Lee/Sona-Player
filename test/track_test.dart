@@ -18,6 +18,7 @@ void main() {
       playCount: 2,
       videoPath: r'C:\Music\Example.mp4',
       mediaType: 'video',
+      artworkPath: r'C:\Music\Example.png',
     );
 
     final map = track.toDatabaseMap()..['id'] = track.id;
@@ -31,6 +32,7 @@ void main() {
     expect(restored.videoPath, r'C:\Music\Example.mp4');
     expect(restored.mediaType, 'video');
     expect(restored.isVideoOnly, isTrue);
+    expect(restored.artworkPath, r'C:\Music\Example.png');
   });
 
   test('copyWith can explicitly clear the recent-play timestamp', () {

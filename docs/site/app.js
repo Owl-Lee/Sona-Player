@@ -69,14 +69,19 @@ const translations = {
   '每一项都认真打磨。': 'refined with care.',
   '从导入一首歌，到连续播放、整理、识别、收藏，再到 MV 与完整播放页，Sona 尽量让每一步都像一个完整产品，而不是功能拼盘。': 'From importing a track to continuous playback, organization, identification, favorites, MVs and the full player, every step is designed as part of one coherent product.',
   '无网照常播放': 'Playback that survives offline',
+  '本地优先设计': 'LOCAL FIRST',
   '本地曲库、播放队列、歌单、收藏与记录不依赖网络。云端不可用时，应用会明确提示，但不会拖垮本地体验。': 'Your local library, queue, playlists, favorites and history do not depend on the network. When the cloud is unavailable, Sona tells you clearly without disrupting local playback.',
   '音乐和 MV 在同一套逻辑里': 'Music and MVs, one consistent system',
+  '音频 + 视频': 'AUDIO + VIDEO',
   '自动识别媒体类型、关联唱片与 MV，队列切歌时同步更新播放界面。': 'Sona detects media types, links records and MVs, and keeps the player interface in sync as the queue changes.',
   '让杂乱文件重新有名字': 'Turn messy files back into music',
+  '智能元数据': 'SMART METADATA',
   '结合标签、文件名清理、MusicBrainz，以及可选 Chromaprint / AcoustID 声纹回退，校准歌曲、歌手和专辑信息。': 'Media tags, filename cleanup, MusicBrainz and optional Chromaprint / AcoustID fingerprint fallback work together to refine track, artist and album metadata.',
   '收藏、歌单、最近播放与排行': 'Favorites, playlists, recents and charts',
+  '你的曲库': 'YOUR LIBRARY',
   '同一首歌在不同入口保持一致的播放、右键与队列逻辑，快速找到真正想听的内容。': 'The same track keeps consistent playback, context-menu and queue behavior across every entry point, so the music you want is always easy to reach.',
   '不止换颜色，而是换一种听歌氛围': 'More than colors—a different listening mood',
+  '个性化主题': 'PERSONAL THEMES',
   '液态毛玻璃、黑胶唱片、主题色联动与壁纸专属特效共同构成完整皮肤。选中态、文字对比度和控制器会随主题适配。': 'Liquid glass, vinyl playback, adaptive accent colors and wallpaper-specific effects form complete themes. Selection states, text contrast and controls adapt with them.',
   '真实界面': 'Real interface',
   '不是概念图。': 'Not a concept.',
@@ -110,16 +115,18 @@ const translations = {
   '音乐文件与核心资料保存在你的设备上。': 'Music files and core metadata stay on your device.',
   '可选识别服务': 'Optional identification services',
   '只有主动识别时才请求公开音乐资料服务。': 'Public music services are contacted only when you request identification.',
-  '公开预览': 'Public preview',
-  '同步能力仍在持续加强，重要音乐请保留本地备份。': 'Sync is still evolving; keep local backups of important music.',
+  '备份与恢复': 'Backup and restore',
+  '0.5.0 可导出和恢复完整 Sona 曲库及由应用管理的资源。': 'Version 0.5.0 can export and restore the complete Sona library and its managed assets.',
   '开始使用': 'Get started',
   '现在，把自己的音乐': 'Now bring your music',
   '带回自己的播放器。': 'back to your own player.',
-  'Sona 0.4.51 公开预览版。无需订阅，下载即用。': 'Sona 0.4.51 public preview. No subscription—download and listen.',
+  'Sona 0.5.0 公开预览版。无需订阅，下载即用。': 'Sona 0.5.0 public preview. No subscription—download and listen.',
   '适用于': 'For',
-  '64 位便携版 · ZIP': '64-bit portable · ZIP',
+  '64 位安装器 · EXE': '64-bit installer · EXE',
   '直接安装 · APK': 'Direct install · APK',
-  '当前为公开预览版。Android 0.4.50 无法直接覆盖升级到 0.4.51，请先备份并卸载旧版一次；Windows 可能显示 SmartScreen 或“未知发布者”提示。请只从本页面或 GitHub Release 下载。': 'This is a public preview. Android 0.4.50 cannot be updated in place to 0.4.51; back up first and uninstall it once. Windows may show SmartScreen or an Unknown publisher warning. Download only from this page or GitHub Releases.',
+  '更喜欢便携版？': 'Prefer a portable build?',
+  '下载 Windows x64 便携版 ZIP': 'Download the Windows x64 portable ZIP',
+  'Sona 官方版本从 0.4.51 起使用永久 Android 签名。官方 0.5.0 APK 可以直接覆盖官方 0.4.51。如果已安装 0.4.50 开发签名版或其他不同签名版本，请先同步需要保留的资料并保留媒体文件，然后卸载一次该版本，再安装 0.5.0。卸载会清除 Sona 的应用私有数据库、设置和自动快照，但不会删除普通共享目录中的媒体文件。迁移前请导出完整备份。Windows 安装包目前没有 Authenticode 签名，SmartScreen 可能显示“Unknown publisher（未知发布者）”。请只从本页面或 GitHub Release 下载。': 'Official Sona releases have used the permanent Android signing identity since 0.4.51. The official 0.5.0 APK updates official 0.4.51 installations in place. If you have the 0.4.50 development-signed APK or another differently signed build, sync what you need and keep your media files, then uninstall that build once before installing 0.5.0. Uninstalling clears Sona\'s app-private database, settings, and automatic snapshots, but not media in normal shared folders. Export a complete backup before migrations. Windows packages are not Authenticode-signed yet, so SmartScreen may show “Unknown publisher.” Download only from this page or GitHub Releases.',
   '为自己的音乐，做一个真正属于自己的空间。': 'A space that truly belongs to you and your music.',
 };
 
@@ -132,6 +139,13 @@ const attributeTranslations = {
   'Sona 首页真实截图': 'Real screenshot of the Sona home screen',
   '歌曲智能识别流程': 'Smart track identification pipeline',
 };
+
+const englishToChinese = Object.fromEntries(
+  Object.entries(translations).map(([chinese, english]) => [english, chinese]),
+);
+const englishAttributeToChinese = Object.fromEntries(
+  Object.entries(attributeTranslations).map(([chinese, english]) => [english, chinese]),
+);
 
 const siteMetadata = {
   zh: {
@@ -159,15 +173,17 @@ const textNodes = [];
 const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
 let textNode;
 while ((textNode = walker.nextNode())) {
-  const original = textNode.nodeValue.trim();
-  if (translations[original]) textNodes.push({ node: textNode, original });
+  const visibleText = textNode.nodeValue.trim();
+  const original = translations[visibleText] ? visibleText : englishToChinese[visibleText];
+  if (original) textNodes.push({ node: textNode, original });
 }
 
 const translatedAttributes = [];
 document.querySelectorAll('[aria-label], [alt], [title]').forEach((element) => {
   ['aria-label', 'alt', 'title'].forEach((attribute) => {
-    const original = element.getAttribute(attribute);
-    if (original && attributeTranslations[original]) translatedAttributes.push({ element, attribute, original });
+    const visibleValue = element.getAttribute(attribute);
+    const original = visibleValue && (attributeTranslations[visibleValue] ? visibleValue : englishAttributeToChinese[visibleValue]);
+    if (original) translatedAttributes.push({ element, attribute, original });
   });
 });
 
@@ -208,6 +224,11 @@ const applyLanguage = (language, persist = true) => {
   document.querySelector('meta[name="description"]')?.setAttribute('content', metadata.description);
   document.querySelector('meta[property="og:title"]')?.setAttribute('content', metadata.ogTitle);
   document.querySelector('meta[property="og:description"]')?.setAttribute('content', metadata.ogDescription);
+  const canonicalUrl = currentLanguage === 'zh'
+    ? 'https://sona.yanbaoli.me/?lang=zh'
+    : 'https://sona.yanbaoli.me/';
+  document.querySelector('link[rel="canonical"]')?.setAttribute('href', canonicalUrl);
+  document.querySelector('meta[property="og:url"]')?.setAttribute('content', canonicalUrl);
 
   languageToggle.textContent = currentLanguage === 'en' ? '中文' : 'EN';
   languageToggle.setAttribute('aria-label', currentLanguage === 'en' ? '切换至中文' : 'Switch to English');
@@ -217,7 +238,7 @@ const applyLanguage = (language, persist = true) => {
   updateShowcaseLanguage();
 
   const url = new URL(window.location.href);
-  if (currentLanguage === 'en') url.searchParams.set('lang', 'en');
+  if (currentLanguage === 'zh') url.searchParams.set('lang', 'zh');
   else url.searchParams.delete('lang');
   history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
   if (persist) {

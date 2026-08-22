@@ -2,6 +2,8 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../performance/visual_effects.dart';
+
 /// A reusable, deliberately restrained liquid-glass surface.
 ///
 /// The blur is real (rather than a translucent flat fill), while the layered
@@ -33,6 +35,8 @@ class LiquidGlass extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final effectsMode = VisualEffectsScope.maybeOf(context);
+    final effectiveBlur = blur * effectsMode.blurScale;
     final radius = BorderRadius.circular(borderRadius);
     final surfaceColors = dark
         ? [
@@ -81,7 +85,7 @@ class LiquidGlass extends StatelessWidget {
         ),
         child: ClipRRect(
           borderRadius: radius,
-          child: blur <= 0
+          child: effectiveBlur <= 0
               ? _GlassSurface(
                   radius: radius,
                   padding: padding,
@@ -91,7 +95,10 @@ class LiquidGlass extends StatelessWidget {
                   child: child,
                 )
               : BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+                  filter: ImageFilter.blur(
+                    sigmaX: effectiveBlur,
+                    sigmaY: effectiveBlur,
+                  ),
                   child: _GlassSurface(
                     radius: radius,
                     padding: padding,

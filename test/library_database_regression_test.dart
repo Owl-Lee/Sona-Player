@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path_util;
 import 'package:sonar_vault/features/library/data/library_database.dart';
 import 'package:sonar_vault/features/library/domain/track.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
   late Directory temporaryDirectory;
@@ -110,6 +111,59 @@ void main() {
       );
     },
   );
+
+  test('schema v8 metadata migration is repeatable across reopen', () async {
+    await database.close();
+    final legacyPath = path_util.join(temporaryDirectory.path, 'legacy-v7.db');
+    sqfliteFfiInit();
+    final legacy = await databaseFactoryFfi.openDatabase(legacyPath);
+    await legacy.execute('''
+      CREATE TABLE tracks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        path TEXT NOT NULL UNIQUE,
+        title TEXT NOT NULL,
+        artist TEXT NOT NULL,
+        album TEXT NOT NULL,
+        duration_ms INTEGER NOT NULL DEFAULT 0,
+        file_size INTEGER NOT NULL DEFAULT 0,
+        content_hash TEXT NOT NULL UNIQUE,
+        imported_at TEXT NOT NULL,
+        is_favorite INTEGER NOT NULL DEFAULT 0,
+        play_count INTEGER NOT NULL DEFAULT 0,
+        last_played_at TEXT,
+        video_path TEXT,
+        media_type TEXT NOT NULL DEFAULT 'audio'
+      )
+    ''');
+    await legacy.execute('PRAGMA user_version = 7');
+    await legacy.close();
+
+    database = LibraryDatabase();
+    await database.initialize(databasePath: legacyPath);
+    final inserted = await database.insertTrack(_track(900));
+    final revision = await database.updateTrackMetadataWithHistory(
+      inserted!.id!,
+      title: 'Migrated title',
+      artist: inserted.artist,
+      album: inserted.album,
+      artworkPath: 'C:/test/migrated-cover.jpg',
+      changeKind: 'manual',
+      source: 'migration regression',
+    );
+    expect(revision, isNotNull);
+    await database.close();
+
+    database = LibraryDatabase();
+    await database.initialize(databasePath: legacyPath);
+    expect(
+      (await database.getTrackMetadataHistory(inserted.id!)),
+      hasLength(1),
+    );
+    expect(
+      (await database.getTracks()).single.artworkPath,
+      'C:/test/migrated-cover.jpg',
+    );
+  });
 }
 
 Track _track(int seed) {

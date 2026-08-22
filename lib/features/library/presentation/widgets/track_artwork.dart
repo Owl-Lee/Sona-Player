@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../../../../core/localization/sona_localizations.dart';
@@ -66,7 +68,7 @@ class TrackArtwork extends StatelessWidget {
       );
     }
 
-    return Container(
+    final generatedArtwork = Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
@@ -101,6 +103,32 @@ class TrackArtwork extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+    final customPath = track?.artworkPath?.trim();
+    if (customPath == null || customPath.isEmpty) return generatedArtwork;
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(borderRadius),
+        boxShadow: [
+          BoxShadow(
+            color: palette.last.withValues(alpha: 0.13),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(borderRadius),
+        child: Image.file(
+          File(customPath),
+          fit: BoxFit.cover,
+          filterQuality: FilterQuality.medium,
+          errorBuilder: (_, _, _) => generatedArtwork,
         ),
       ),
     );

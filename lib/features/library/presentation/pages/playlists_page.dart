@@ -75,7 +75,7 @@ class PlaylistsPage extends ConsumerWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            '我的歌单',
+                            context.tr('我的歌单'),
                             style: Theme.of(context).textTheme.headlineMedium
                                 ?.copyWith(
                                   fontSize: mobile ? 30 : 32,
@@ -98,7 +98,7 @@ class PlaylistsPage extends ConsumerWidget {
                     ),
                     _GlassCreateButton(
                       onPressed: () => _createPlaylist(context, ref),
-                      label: Text(mobile ? '新建' : '新建歌单'),
+                      label: Text(context.tr(mobile ? '新建' : '新建歌单')),
                       accent: appearance.accent,
                       compact: mobile,
                     ),
@@ -198,16 +198,20 @@ class PlaylistsPage extends ConsumerWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('删除歌单？'),
-        content: Text('“${playlist.name}”会被删除，但其中的歌曲仍保留在本地曲库。'),
+        title: Text(context.tr('删除歌单？')),
+        content: Text(
+          context
+              .tr('“{playlist}”会被删除，但其中的歌曲仍保留在本地曲库。')
+              .replaceAll('{playlist}', playlist.name),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('取消'),
+            child: Text(context.tr('取消')),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('删除'),
+            child: Text(context.tr('删除')),
           ),
         ],
       ),
@@ -335,18 +339,21 @@ class _PlaylistDetailDialogState extends ConsumerState<_PlaylistDetailDialog> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('从歌单移除？'),
+        title: Text(context.tr('从歌单移除？')),
         content: Text(
-          '将从“${widget.playlist.name}”移除 ${_selected.length} 首歌曲，原文件仍保留。',
+          context
+              .tr('将从“{playlist}”移除 {count} 首歌曲，原文件仍保留。')
+              .replaceAll('{playlist}', widget.playlist.name)
+              .replaceAll('{count}', '${_selected.length}'),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
+            child: Text(context.tr('取消')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('确认移除'),
+            child: Text(context.tr('确认移除')),
           ),
         ],
       ),
@@ -380,8 +387,13 @@ class _PlaylistDetailDialogState extends ConsumerState<_PlaylistDetailDialog> {
       SnackBar(
         content: Text(
           skipped == 0
-              ? '已加入 ${widget.playlist.name}'
-              : '已加入 $added 首，跳过 $skipped 首重复歌曲',
+              ? context
+                    .tr('已加入 {playlist}')
+                    .replaceAll('{playlist}', widget.playlist.name)
+              : context
+                    .tr('已加入 {added} 首，跳过 {skipped} 首重复歌曲')
+                    .replaceAll('{added}', '$added')
+                    .replaceAll('{skipped}', '$skipped'),
         ),
       ),
     );
@@ -439,14 +451,21 @@ class _PlaylistDetailDialogState extends ConsumerState<_PlaylistDetailDialog> {
                               ),
                               Text(
                                 widget.playlist.description.isEmpty
-                                    ? '${widget.playlist.trackCount} 首歌曲'
+                                    ? context
+                                          .tr('{count} 首歌曲')
+                                          .replaceAll(
+                                            '{count}',
+                                            '${widget.playlist.trackCount}',
+                                          )
                                     : widget.playlist.description,
                               ),
                             ],
                           ),
                         ),
                         IconButton(
-                          tooltip: widget.embedded ? '返回我的歌单' : '关闭',
+                          tooltip: context.tr(
+                            widget.embedded ? '返回我的歌单' : '关闭',
+                          ),
                           style: headerIconStyle,
                           onPressed: _closeDetail,
                           icon: Icon(
@@ -466,17 +485,17 @@ class _PlaylistDetailDialogState extends ConsumerState<_PlaylistDetailDialog> {
                           TextButton.icon(
                             onPressed: _addTracks,
                             icon: const Icon(Icons.add_rounded),
-                            label: const Text('添加歌曲'),
+                            label: Text(context.tr('添加歌曲')),
                             style: headerTextStyle,
                           ),
                           TextButton.icon(
                             onPressed: widget.onEdit,
                             icon: const Icon(Icons.edit_rounded),
-                            label: const Text('编辑'),
+                            label: Text(context.tr('编辑')),
                             style: headerTextStyle,
                           ),
                           IconButton(
-                            tooltip: _selecting ? '退出多选' : '多选歌曲',
+                            tooltip: context.tr(_selecting ? '退出多选' : '多选歌曲'),
                             style: headerIconStyle,
                             onPressed: () => setState(() {
                               _selecting = !_selecting;
@@ -512,7 +531,12 @@ class _PlaylistDetailDialogState extends ConsumerState<_PlaylistDetailDialog> {
                           ),
                           Text(
                             widget.playlist.description.isEmpty
-                                ? '${widget.playlist.trackCount} 首歌曲'
+                                ? context
+                                      .tr('{count} 首歌曲')
+                                      .replaceAll(
+                                        '{count}',
+                                        '${widget.playlist.trackCount}',
+                                      )
                                 : widget.playlist.description,
                           ),
                         ],
@@ -521,17 +545,17 @@ class _PlaylistDetailDialogState extends ConsumerState<_PlaylistDetailDialog> {
                     TextButton.icon(
                       onPressed: _addTracks,
                       icon: const Icon(Icons.add_rounded),
-                      label: const Text('添加歌曲'),
+                      label: Text(context.tr('添加歌曲')),
                       style: headerTextStyle,
                     ),
                     TextButton.icon(
                       onPressed: widget.onEdit,
                       icon: const Icon(Icons.edit_rounded),
-                      label: const Text('编辑'),
+                      label: Text(context.tr('编辑')),
                       style: headerTextStyle,
                     ),
                     IconButton(
-                      tooltip: _selecting ? '退出多选' : '多选歌曲',
+                      tooltip: context.tr(_selecting ? '退出多选' : '多选歌曲'),
                       style: headerIconStyle,
                       onPressed: () => setState(() {
                         _selecting = !_selecting;
@@ -544,7 +568,7 @@ class _PlaylistDetailDialogState extends ConsumerState<_PlaylistDetailDialog> {
                       ),
                     ),
                     IconButton(
-                      tooltip: widget.embedded ? '返回我的歌单' : '关闭',
+                      tooltip: context.tr(widget.embedded ? '返回我的歌单' : '关闭'),
                       style: headerIconStyle,
                       onPressed: _closeDetail,
                       icon: Icon(
@@ -560,12 +584,16 @@ class _PlaylistDetailDialogState extends ConsumerState<_PlaylistDetailDialog> {
                   padding: const EdgeInsets.only(top: 12),
                   child: Row(
                     children: [
-                      Text('已选择 ${_selected.length} 首'),
+                      Text(
+                        context
+                            .tr('已选择 {count} 首')
+                            .replaceAll('{count}', '${_selected.length}'),
+                      ),
                       const Spacer(),
                       FilledButton.icon(
                         onPressed: _selected.isEmpty ? null : _removeSelected,
                         icon: const Icon(Icons.remove_circle_outline_rounded),
-                        label: const Text('从歌单移除'),
+                        label: Text(context.tr('从歌单移除')),
                       ),
                     ],
                   ),
@@ -580,9 +608,9 @@ class _PlaylistDetailDialogState extends ConsumerState<_PlaylistDetailDialog> {
                     }
                     final tracks = snapshot.data!;
                     if (tracks.isEmpty) {
-                      return const Center(
+                      return Center(
                         child: Text(
-                          '这个歌单还是空的。\n点击上方“添加歌曲”开始选择。',
+                          context.tr('这个歌单还是空的。\n点击上方“添加歌曲”开始选择。'),
                           textAlign: TextAlign.center,
                         ),
                       );
@@ -666,7 +694,10 @@ class _PlaylistDetailDialogState extends ConsumerState<_PlaylistDetailDialog> {
                                           ref,
                                           track,
                                           tracks,
-                                          source: '歌单《${widget.playlist.name}》',
+                                          source: 'queue_source_playlist',
+                                          sourceArgs: <String, String>{
+                                            'playlist': widget.playlist.name,
+                                          },
                                         );
                                         if (!widget.embedded) {
                                           Navigator.pop(context);
@@ -762,20 +793,24 @@ class _AddTracksDialogState extends ConsumerState<_AddTracksDialog> {
   Widget build(BuildContext context) {
     final state = ref.watch(libraryControllerProvider);
     final sources = <DropdownMenuItem<String>>[
-      const DropdownMenuItem(value: 'local', child: Text('本地曲库')),
-      const DropdownMenuItem(value: 'favorites', child: Text('我的收藏')),
-      const DropdownMenuItem(value: 'recent', child: Text('最近播放')),
+      DropdownMenuItem(value: 'local', child: Text(context.tr('本地曲库'))),
+      DropdownMenuItem(value: 'favorites', child: Text(context.tr('我的收藏'))),
+      DropdownMenuItem(value: 'recent', child: Text(context.tr('最近播放'))),
       ...state.playlists
           .where((playlist) => playlist.id != widget.target.id)
           .map(
             (playlist) => DropdownMenuItem(
               value: 'playlist:${playlist.id}',
-              child: Text('歌单 · ${playlist.name}'),
+              child: Text(
+                context
+                    .tr('歌单 · {playlist}')
+                    .replaceAll('{playlist}', playlist.name),
+              ),
             ),
           ),
     ];
     return AlertDialog(
-      title: const Text('添加歌曲到歌单'),
+      title: Text(context.tr('添加歌曲到歌单')),
       content: SizedBox(
         width: 620,
         height: 520,
@@ -783,7 +818,7 @@ class _AddTracksDialogState extends ConsumerState<_AddTracksDialog> {
           children: [
             Row(
               children: [
-                const Text('来源'),
+                Text(context.tr('来源')),
                 const SizedBox(width: 12),
                 Expanded(
                   child: DropdownButtonFormField<String>(
@@ -796,7 +831,11 @@ class _AddTracksDialogState extends ConsumerState<_AddTracksDialog> {
                   ),
                 ),
                 const SizedBox(width: 12),
-                Text('已选 ${_selected.length} 首'),
+                Text(
+                  context
+                      .tr('已选 {count} 首')
+                      .replaceAll('{count}', '${_selected.length}'),
+                ),
               ],
             ),
             const SizedBox(height: 12),
@@ -809,7 +848,7 @@ class _AddTracksDialogState extends ConsumerState<_AddTracksDialog> {
                   }
                   final tracks = snapshot.data!;
                   if (tracks.isEmpty) {
-                    return const Center(child: Text('这个来源暂时没有歌曲'));
+                    return Center(child: Text(context.tr('这个来源暂时没有歌曲')));
                   }
                   return ListView.builder(
                     itemCount: tracks.length,
@@ -847,7 +886,7 @@ class _AddTracksDialogState extends ConsumerState<_AddTracksDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('取消'),
+          child: Text(context.tr('取消')),
         ),
         FilledButton(
           onPressed: _selected.isEmpty
@@ -863,7 +902,11 @@ class _AddTracksDialogState extends ConsumerState<_AddTracksDialog> {
                     );
                   });
                 },
-          child: Text('添加 ${_selected.length} 首'),
+          child: Text(
+            context
+                .tr('添加 {count} 首')
+                .replaceAll('{count}', '${_selected.length}'),
+          ),
         ),
       ],
     );
@@ -895,30 +938,36 @@ class _PlaylistCard extends ConsumerWidget {
         Rect.fromLTWH(position.dx, position.dy, 1, 1),
         Offset.zero & renderBox.size,
       ),
-      items: const [
+      items: [
         PopupMenuItem(
           value: 'open',
           child: ListTile(
             dense: true,
-            leading: Icon(Icons.open_in_new_rounded),
-            title: Text('打开歌单'),
+            leading: const Icon(Icons.open_in_new_rounded),
+            title: Text(context.tr('打开歌单')),
           ),
         ),
         PopupMenuItem(
           value: 'edit',
           child: ListTile(
             dense: true,
-            leading: Icon(Icons.edit_rounded),
-            title: Text('编辑歌单'),
+            leading: const Icon(Icons.edit_rounded),
+            title: Text(context.tr('编辑歌单')),
           ),
         ),
-        PopupMenuDivider(),
+        const PopupMenuDivider(),
         PopupMenuItem(
           value: 'delete',
           child: ListTile(
             dense: true,
-            leading: Icon(Icons.delete_outline_rounded, color: Colors.red),
-            title: Text('删除歌单', style: TextStyle(color: Colors.red)),
+            leading: const Icon(
+              Icons.delete_outline_rounded,
+              color: Colors.red,
+            ),
+            title: Text(
+              context.tr('删除歌单'),
+              style: const TextStyle(color: Colors.red),
+            ),
           ),
         ),
       ],
@@ -1010,8 +1059,22 @@ class _PlaylistCard extends ConsumerWidget {
                         const SizedBox(height: 3),
                         Text(
                           playlist.description.isEmpty
-                              ? '${playlist.trackCount} 首歌曲'
-                              : '${playlist.trackCount} 首歌曲 · ${playlist.description}',
+                              ? context
+                                    .tr('{count} 首歌曲')
+                                    .replaceAll(
+                                      '{count}',
+                                      '${playlist.trackCount}',
+                                    )
+                              : context
+                                    .tr('{count} 首歌曲 · {description}')
+                                    .replaceAll(
+                                      '{count}',
+                                      '${playlist.trackCount}',
+                                    )
+                                    .replaceAll(
+                                      '{description}',
+                                      playlist.description,
+                                    ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.bodySmall
@@ -1021,15 +1084,21 @@ class _PlaylistCard extends ConsumerWidget {
                     ),
                   ),
                   PopupMenuButton<String>(
-                    tooltip: '歌单操作',
+                    tooltip: context.tr('歌单操作'),
                     iconColor: foreground,
                     onSelected: (value) {
                       if (value == 'edit') onEdit();
                       if (value == 'delete') onDelete();
                     },
-                    itemBuilder: (context) => const [
-                      PopupMenuItem(value: 'edit', child: Text('编辑歌单')),
-                      PopupMenuItem(value: 'delete', child: Text('删除歌单')),
+                    itemBuilder: (context) => [
+                      PopupMenuItem(
+                        value: 'edit',
+                        child: Text(context.tr('编辑歌单')),
+                      ),
+                      PopupMenuItem(
+                        value: 'delete',
+                        child: Text(context.tr('删除歌单')),
+                      ),
                     ],
                   ),
                 ],
@@ -1122,8 +1191,22 @@ class _CompactMobilePlaylistCard extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         playlist.description.isEmpty
-                            ? '${playlist.trackCount} 首歌曲'
-                            : '${playlist.trackCount} 首歌曲 · ${playlist.description}',
+                            ? context
+                                  .tr('{count} 首歌曲')
+                                  .replaceAll(
+                                    '{count}',
+                                    '${playlist.trackCount}',
+                                  )
+                            : context
+                                  .tr('{count} 首歌曲 · {description}')
+                                  .replaceAll(
+                                    '{count}',
+                                    '${playlist.trackCount}',
+                                  )
+                                  .replaceAll(
+                                    '{description}',
+                                    playlist.description,
+                                  ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodySmall
@@ -1138,9 +1221,15 @@ class _CompactMobilePlaylistCard extends StatelessWidget {
                     if (value == 'edit') onEdit();
                     if (value == 'delete') onDelete();
                   },
-                  itemBuilder: (context) => const [
-                    PopupMenuItem(value: 'edit', child: Text('编辑歌单')),
-                    PopupMenuItem(value: 'delete', child: Text('删除歌单')),
+                  itemBuilder: (context) => [
+                    PopupMenuItem(
+                      value: 'edit',
+                      child: Text(context.tr('编辑歌单')),
+                    ),
+                    PopupMenuItem(
+                      value: 'delete',
+                      child: Text(context.tr('删除歌单')),
+                    ),
                   ],
                 ),
               ],
@@ -1316,8 +1405,8 @@ class _PlaylistEditorDialogState extends State<_PlaylistEditorDialog> {
       context,
       imageBytes: bytes,
       aspectRatio: 1,
-      title: '裁切歌单封面',
-      hint: '拖动并缩放，保留正方形区域',
+      title: context.tr('裁切歌单封面'),
+      hint: context.tr('拖动并缩放，保留正方形区域'),
     );
     if (cropped == null || !mounted) return;
     setState(() => _savingCover = true);
@@ -1342,7 +1431,7 @@ class _PlaylistEditorDialogState extends State<_PlaylistEditorDialog> {
   Widget build(BuildContext context) {
     final cover = _coverPath == null ? null : File(_coverPath!);
     return AlertDialog(
-      title: Text(widget.playlist == null ? '新建歌单' : '编辑歌单'),
+      title: Text(context.tr(widget.playlist == null ? '新建歌单' : '编辑歌单')),
       content: SingleChildScrollView(
         child: SizedBox(
           width: 460,
@@ -1395,9 +1484,11 @@ class _PlaylistEditorDialogState extends State<_PlaylistEditorDialog> {
                                     ),
                                     const SizedBox(height: 7),
                                     Text(
-                                      cover != null && cover.existsSync()
-                                          ? '点按更换并裁切封面'
-                                          : '添加歌单封面（可选）',
+                                      context.tr(
+                                        cover != null && cover.existsSync()
+                                            ? '点按更换并裁切封面'
+                                            : '添加歌单封面（可选）',
+                                      ),
                                       style: TextStyle(
                                         color:
                                             cover != null && cover.existsSync()
@@ -1426,9 +1517,9 @@ class _PlaylistEditorDialogState extends State<_PlaylistEditorDialog> {
                       maxLength: 40,
                       minLines: 2,
                       maxLines: 2,
-                      decoration: const InputDecoration(
-                        labelText: '歌单名称',
-                        hintText: '例如：夜晚散步',
+                      decoration: InputDecoration(
+                        labelText: context.tr('歌单名称'),
+                        hintText: context.tr('例如：夜晚散步'),
                         alignLabelWithHint: true,
                       ),
                     ),
@@ -1440,9 +1531,9 @@ class _PlaylistEditorDialogState extends State<_PlaylistEditorDialog> {
                       maxLength: 160,
                       minLines: 2,
                       maxLines: 2,
-                      decoration: const InputDecoration(
-                        labelText: '歌单描述',
-                        hintText: '心情、场景或故事',
+                      decoration: InputDecoration(
+                        labelText: context.tr('歌单描述'),
+                        hintText: context.tr('心情、场景或故事'),
                         alignLabelWithHint: true,
                       ),
                     ),
@@ -1456,7 +1547,7 @@ class _PlaylistEditorDialogState extends State<_PlaylistEditorDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('取消'),
+          child: Text(context.tr('取消')),
         ),
         FilledButton(
           onPressed: _savingCover || _name.text.trim().isEmpty
@@ -1468,7 +1559,7 @@ class _PlaylistEditorDialogState extends State<_PlaylistEditorDialog> {
                     coverPath: _coverPath,
                   ),
                 ),
-          child: Text(widget.playlist == null ? '创建' : '保存'),
+          child: Text(context.tr(widget.playlist == null ? '创建' : '保存')),
         ),
       ],
     );
@@ -1500,10 +1591,13 @@ class _EmptyPlaylists extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 20),
-          Text('创建你的第一个歌单', style: Theme.of(context).textTheme.titleLarge),
+          Text(
+            context.tr('创建你的第一个歌单'),
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
           const SizedBox(height: 8),
           Text(
-            '比如通勤、睡前、运动，或者只属于某段时间的音乐。',
+            context.tr('比如通勤、睡前、运动，或者只属于某段时间的音乐。'),
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.bodyMedium,
           ),
@@ -1511,7 +1605,7 @@ class _EmptyPlaylists extends StatelessWidget {
           FilledButton.icon(
             onPressed: onCreate,
             icon: const Icon(Icons.add_rounded),
-            label: const Text('新建歌单'),
+            label: Text(context.tr('新建歌单')),
           ),
         ],
       ),

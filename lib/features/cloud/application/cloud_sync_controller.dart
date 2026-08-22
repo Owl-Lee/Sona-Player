@@ -8,60 +8,94 @@ import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/cloud/cloud_config.dart';
+import '../../../core/utils/serialized_task_queue.dart';
 import '../../library/application/library_controller.dart';
 import '../../library/data/library_database.dart';
 import '../../library/domain/track.dart';
+import '../../library/domain/track_identification.dart';
+import '../domain/cloud_file_cache.dart';
+import '../domain/cloud_recycle_policy.dart';
+import '../domain/cloud_storage_delete_outbox.dart';
 
 const _freeProjectFileLimit = 50 * 1024 * 1024;
 const _cloudRequestTimeout = Duration(seconds: 5);
+const _storageDeleteOutboxPrefix = 'cloud.storage_delete_outbox.v1';
 
 class CloudSyncState {
   const CloudSyncState({
     this.syncing = false,
     this.progress = 0,
     this.status = '',
+    this.statusArgs = const {},
     this.summary = '',
+    this.summaryArgs = const {},
     this.error = '',
+    this.errorArgs = const {},
     this.cloudTracks = const [],
+    this.recycledTracks = const [],
     this.loadingCloudTracks = false,
     this.offline = false,
     this.removingCloudTrackId,
+    this.restoringCloudTrackId,
+    this.emptyingRecycleBin = false,
   });
 
   final bool syncing;
   final double progress;
   final String status;
+  final Map<String, String> statusArgs;
   final String summary;
+  final Map<String, String> summaryArgs;
   final String error;
+  final Map<String, String> errorArgs;
   final List<CloudTrackSummary> cloudTracks;
+  final List<CloudTrackSummary> recycledTracks;
   final bool loadingCloudTracks;
   final bool offline;
   final String? removingCloudTrackId;
+  final String? restoringCloudTrackId;
+  final bool emptyingRecycleBin;
 
   CloudSyncState copyWith({
     bool? syncing,
     double? progress,
     String? status,
+    Map<String, String>? statusArgs,
     String? summary,
+    Map<String, String>? summaryArgs,
     String? error,
+    Map<String, String>? errorArgs,
     List<CloudTrackSummary>? cloudTracks,
+    List<CloudTrackSummary>? recycledTracks,
     bool? loadingCloudTracks,
     bool? offline,
     String? removingCloudTrackId,
     bool clearRemovingCloudTrackId = false,
+    String? restoringCloudTrackId,
+    bool clearRestoringCloudTrackId = false,
+    bool? emptyingRecycleBin,
   }) {
     return CloudSyncState(
       syncing: syncing ?? this.syncing,
       progress: progress ?? this.progress,
       status: status ?? this.status,
+      statusArgs: statusArgs ?? (status != null ? const {} : this.statusArgs),
       summary: summary ?? this.summary,
+      summaryArgs:
+          summaryArgs ?? (summary != null ? const {} : this.summaryArgs),
       error: error ?? this.error,
+      errorArgs: errorArgs ?? (error != null ? const {} : this.errorArgs),
       cloudTracks: cloudTracks ?? this.cloudTracks,
+      recycledTracks: recycledTracks ?? this.recycledTracks,
       loadingCloudTracks: loadingCloudTracks ?? this.loadingCloudTracks,
       offline: offline ?? this.offline,
       removingCloudTrackId: clearRemovingCloudTrackId
           ? null
           : removingCloudTrackId ?? this.removingCloudTrackId,
+      restoringCloudTrackId: clearRestoringCloudTrackId
+          ? null
+          : restoringCloudTrackId ?? this.restoringCloudTrackId,
+      emptyingRecycleBin: emptyingRecycleBin ?? this.emptyingRecycleBin,
     );
   }
 }
@@ -79,6 +113,7 @@ class CloudTrackSummary {
     this.updatedAt,
     this.mediaObjectPath,
     this.videoObjectPath,
+    this.deletedAt,
   });
 
   final String id;
@@ -92,6 +127,11 @@ class CloudTrackSummary {
   final DateTime? updatedAt;
   final String? mediaObjectPath;
   final String? videoObjectPath;
+  final DateTime? deletedAt;
+
+  bool get isDeleted => deletedAt != null;
+
+  DateTime? get purgeAt => deletedAt?.add(cloudRecycleRetention);
 
   factory CloudTrackSummary.fromRow(Map<String, dynamic> row) {
     return CloudTrackSummary(
@@ -109,9 +149,15 @@ class CloudTrackSummary {
           ?.toLocal(),
       mediaObjectPath: row['media_object_path'] as String?,
       videoObjectPath: row['video_object_path'] as String?,
+      deletedAt: cloudDeletedAt(row)?.toLocal(),
     );
   }
 }
+
+bool cloudMutationAffectedTrack(
+  Iterable<Map<String, dynamic>> rows,
+  String trackId,
+) => rows.any((row) => row['id'] == trackId);
 
 final cloudSyncControllerProvider =
     StateNotifierProvider<CloudSyncController, CloudSyncState>((ref) {
@@ -123,10 +169,16 @@ final cloudSyncControllerProvider =
 
 class CloudSyncController extends StateNotifier<CloudSyncState> {
   CloudSyncController(this._client, this._database)
-    : super(const CloudSyncState());
+    : super(const CloudSyncState()) {
+    _initialMaintenance = _cleanupInterruptedCloudDownloads();
+  }
 
   final SupabaseClient? _client;
   final LibraryDatabase _database;
+  final _destructiveTasks = SerializedTaskQueue();
+  final _storageCleanupTasks = SerializedTaskQueue();
+  final _cloudFiles = AtomicCloudFileCache();
+  late final Future<void> _initialMaintenance;
   // Repeated taps must share one cache download/database insertion. Otherwise
   // two downloads of the same file can race and make a healthy cloud look
   // offline.
@@ -138,13 +190,16 @@ class CloudSyncController extends StateNotifier<CloudSyncState> {
     if (client == null || user == null) {
       state = state.copyWith(
         cloudTracks: const [],
+        recycledTracks: const [],
         offline: false,
-        error: 'Please sign in to manage cloud music.',
+        error: 'cloud_sign_in_required',
       );
       return;
     }
     state = state.copyWith(loadingCloudTracks: true, offline: false, error: '');
     try {
+      await _initialMaintenance;
+      await _drainStorageDeleteOutbox(client);
       final spaceId = await _spaceId(client, user.id);
       final rows = _rows(
         await _withCloudTimeout(
@@ -155,11 +210,19 @@ class CloudSyncController extends StateNotifier<CloudSyncState> {
               .order('updated_at', ascending: false),
         ),
       );
+      final activeRows = activeCloudTrackRows(rows);
+      final recycleRows = recoverableCloudTrackRows(rows);
       state = state.copyWith(
         loadingCloudTracks: false,
         offline: false,
-        cloudTracks: rows.map(CloudTrackSummary.fromRow).toList(),
+        cloudTracks: activeRows.map(CloudTrackSummary.fromRow).toList(),
+        recycledTracks: recycleRows
+            .map(CloudTrackSummary.fromRow)
+            .toList(growable: false),
       );
+      // Expired entries are hidden immediately, then cleaned in the
+      // background. A failed cleanup leaves the recoverable row intact.
+      unawaited(_destructiveTasks.run(() => _purgeExpiredCloudTracks(rows)));
     } catch (error) {
       state = state.copyWith(
         loadingCloudTracks: false,
@@ -169,13 +232,16 @@ class CloudSyncController extends StateNotifier<CloudSyncState> {
     }
   }
 
-  /// Removes only the cloud copy. The local file is deliberately kept and its
-  /// hash is remembered so a later sync does not silently upload it again.
-  Future<bool> deleteCloudTrack(CloudTrackSummary track) async {
+  /// Moves only the cloud copy to the recycle bin. Media objects and local
+  /// files are kept, making this operation recoverable for 30 days.
+  Future<bool> deleteCloudTrack(CloudTrackSummary track) =>
+      _destructiveTasks.run(() => _deleteCloudTrack(track));
+
+  Future<bool> _deleteCloudTrack(CloudTrackSummary track) async {
     final client = _client;
     final user = client?.auth.currentUser;
     if (client == null || user == null) {
-      state = state.copyWith(error: 'Please sign in to manage cloud music.');
+      state = state.copyWith(error: 'cloud_sign_in_required');
       return false;
     }
     state = state.copyWith(
@@ -184,38 +250,53 @@ class CloudSyncController extends StateNotifier<CloudSyncState> {
       error: '',
     );
     try {
+      await _initialMaintenance;
       final spaceId = await _spaceId(client, user.id);
+      final deletedAt = DateTime.now().toUtc();
       // A track id alone is not sufficient for a shared space operation.
-      await _withCloudTimeout(
-        client
-            .from('cloud_tracks')
-            .delete()
-            .eq('id', track.id)
-            .eq('space_id', spaceId),
+      final updatedRows = _rows(
+        await _withCloudTimeout(
+          client
+              .from('cloud_tracks')
+              .update({
+                'deleted_at': deletedAt.toIso8601String(),
+                'updated_at': deletedAt.toIso8601String(),
+              })
+              .eq('id', track.id)
+              .eq('space_id', spaceId)
+              .select('id'),
+        ),
       );
-      final objects = [
-        track.mediaObjectPath,
-        track.videoObjectPath,
-      ].whereType<String>().where((value) => value.isNotEmpty).toList();
-      if (objects.isNotEmpty) {
-        try {
-          await _withCloudTimeout(
-            client.storage.from('sona-media').remove(objects),
-          );
-        } catch (_) {
-          // Database deletion is authoritative; a failed storage cleanup is
-          // harmless and can be cleaned up by the storage lifecycle policy.
-        }
+      if (!cloudMutationAffectedTrack(updatedRows, track.id)) {
+        throw StateError('cloud_track_soft_delete_not_applied');
       }
       final excluded = await _excludedCloudHashes();
       excluded.add(track.contentHash);
       await _saveExcludedCloudHashes(excluded);
+      final recycled = CloudTrackSummary(
+        id: track.id,
+        contentHash: track.contentHash,
+        title: track.title,
+        artist: track.artist,
+        album: track.album,
+        duration: track.duration,
+        fileSize: track.fileSize,
+        mediaType: track.mediaType,
+        updatedAt: deletedAt.toLocal(),
+        mediaObjectPath: track.mediaObjectPath,
+        videoObjectPath: track.videoObjectPath,
+        deletedAt: deletedAt.toLocal(),
+      );
       state = state.copyWith(
         cloudTracks: state.cloudTracks
             .where((item) => item.id != track.id)
             .toList(growable: false),
-        summary:
-            'Removed “${track.title}” from cloud. The local file is unchanged.',
+        recycledTracks: [
+          recycled,
+          ...state.recycledTracks.where((item) => item.id != track.id),
+        ],
+        summary: 'cloud_track_recycled',
+        summaryArgs: {'title': track.title},
         clearRemovingCloudTrackId: true,
       );
       return true;
@@ -226,6 +307,168 @@ class CloudSyncController extends StateNotifier<CloudSyncState> {
         clearRemovingCloudTrackId: true,
       );
       return false;
+    }
+  }
+
+  Future<bool> restoreCloudTrack(CloudTrackSummary track) =>
+      _destructiveTasks.run(() => _restoreCloudTrack(track));
+
+  Future<bool> _restoreCloudTrack(CloudTrackSummary track) async {
+    final client = _client;
+    final user = client?.auth.currentUser;
+    if (client == null || user == null) {
+      state = state.copyWith(error: 'cloud_sign_in_required');
+      return false;
+    }
+    state = state.copyWith(
+      restoringCloudTrackId: track.id,
+      offline: false,
+      error: '',
+    );
+    try {
+      final spaceId = await _spaceId(client, user.id);
+      final updatedAt = DateTime.now().toUtc();
+      final updatedRows = _rows(
+        await _withCloudTimeout(
+          client
+              .from('cloud_tracks')
+              .update({
+                'deleted_at': null,
+                'updated_at': updatedAt.toIso8601String(),
+              })
+              .eq('id', track.id)
+              .eq('space_id', spaceId)
+              .select('id'),
+        ),
+      );
+      if (!cloudMutationAffectedTrack(updatedRows, track.id)) {
+        throw StateError('cloud_track_restore_not_applied');
+      }
+      final excluded = await _excludedCloudHashes();
+      excluded.remove(track.contentHash);
+      await _saveExcludedCloudHashes(excluded);
+      await _discardStorageDeletes(
+        userId: user.id,
+        objects: [track.mediaObjectPath, track.videoObjectPath],
+      );
+      final restored = CloudTrackSummary(
+        id: track.id,
+        contentHash: track.contentHash,
+        title: track.title,
+        artist: track.artist,
+        album: track.album,
+        duration: track.duration,
+        fileSize: track.fileSize,
+        mediaType: track.mediaType,
+        updatedAt: updatedAt.toLocal(),
+        mediaObjectPath: track.mediaObjectPath,
+        videoObjectPath: track.videoObjectPath,
+      );
+      state = state.copyWith(
+        cloudTracks: [
+          restored,
+          ...state.cloudTracks.where((item) => item.id != track.id),
+        ],
+        recycledTracks: state.recycledTracks
+            .where((item) => item.id != track.id)
+            .toList(growable: false),
+        summary: 'cloud_track_restored',
+        summaryArgs: {'title': track.title},
+        clearRestoringCloudTrackId: true,
+      );
+      return true;
+    } catch (error) {
+      state = state.copyWith(
+        error: _friendlyError(error),
+        offline: _isOfflineFailure(error),
+        clearRestoringCloudTrackId: true,
+      );
+      return false;
+    }
+  }
+
+  Future<bool> permanentlyDeleteCloudTrack(CloudTrackSummary track) async {
+    return _destructiveTasks.run(
+      () => _permanentlyDeleteCloudTrack(track, updateBusyState: true),
+    );
+  }
+
+  Future<bool> _permanentlyDeleteCloudTrack(
+    CloudTrackSummary track, {
+    required bool updateBusyState,
+  }) async {
+    final client = _client;
+    final user = client?.auth.currentUser;
+    if (client == null || user == null) return false;
+    if (updateBusyState) {
+      state = state.copyWith(removingCloudTrackId: track.id, error: '');
+    }
+    try {
+      await _initialMaintenance;
+      final objects = [
+        track.mediaObjectPath,
+        track.videoObjectPath,
+      ].whereType<String>().where((value) => value.isNotEmpty).toList();
+      // Persist the cleanup intent before the RPC. If the request times out
+      // after committing server-side, a later launch still knows which orphan
+      // objects to remove. Storage RLS rejects deletion while any live row
+      // still references the path, making retries safe and idempotent.
+      await _enqueueStorageDeletes(userId: user.id, objects: objects);
+      final deleted = await _withCloudTimeout(
+        client.rpc(
+          'permanently_delete_cloud_track',
+          params: {'target_track': track.id},
+        ),
+      );
+      if (deleted != true) {
+        throw StateError('The cloud track was not permanently deleted.');
+      }
+      await _drainStorageDeleteOutbox(client);
+      state = state.copyWith(
+        recycledTracks: state.recycledTracks
+            .where((item) => item.id != track.id)
+            .toList(growable: false),
+        clearRemovingCloudTrackId: updateBusyState,
+      );
+      return true;
+    } catch (error) {
+      state = state.copyWith(
+        error: _friendlyError(error),
+        offline: _isOfflineFailure(error),
+        clearRemovingCloudTrackId: updateBusyState,
+      );
+      return false;
+    }
+  }
+
+  Future<int> emptyCloudRecycleBin() =>
+      _destructiveTasks.run(_emptyCloudRecycleBin);
+
+  Future<int> _emptyCloudRecycleBin() async {
+    if (state.emptyingRecycleBin) return 0;
+    state = state.copyWith(emptyingRecycleBin: true, error: '');
+    var removed = 0;
+    for (final track in List<CloudTrackSummary>.of(state.recycledTracks)) {
+      if (await _permanentlyDeleteCloudTrack(track, updateBusyState: false)) {
+        removed += 1;
+      } else if (state.offline) {
+        break;
+      }
+    }
+    state = state.copyWith(emptyingRecycleBin: false);
+    return removed;
+  }
+
+  Future<void> _purgeExpiredCloudTracks(List<Map<String, dynamic>> rows) async {
+    final expired = expiredCloudTrackRows(rows)
+        .map(CloudTrackSummary.fromRow)
+        .toList(growable: false);
+    for (final track in expired) {
+      final removed = await _permanentlyDeleteCloudTrack(
+        track,
+        updateBusyState: false,
+      );
+      if (!removed && state.offline) return;
     }
   }
 
@@ -277,6 +520,8 @@ class CloudSyncController extends StateNotifier<CloudSyncState> {
     final user = client?.auth.currentUser;
     if (client == null || user == null) return null;
     try {
+      await _initialMaintenance;
+      await _drainStorageDeleteOutbox(client);
       final spaceId = await _spaceId(client, user.id);
       final remoteRows = _rows(
         await _withCloudTimeout(
@@ -287,8 +532,9 @@ class CloudSyncController extends StateNotifier<CloudSyncState> {
               .eq('space_id', spaceId),
         ),
       );
-      if (remoteRows.isEmpty) return null;
-      final remote = remoteRows.first;
+      final activeRows = activeCloudTrackRows(remoteRows);
+      if (activeRows.isEmpty) return null;
+      final remote = activeRows.first;
       final stateRows = _rows(
         await _withCloudTimeout(
           client
@@ -324,11 +570,13 @@ class CloudSyncController extends StateNotifier<CloudSyncState> {
     final client = _client;
     final user = client?.auth.currentUser;
     if (client == null || user == null) {
-      state = state.copyWith(error: '请先登录 Sona 云账号。');
+      state = state.copyWith(error: 'cloud_sign_in_required');
       return false;
     }
-    state = const CloudSyncState(syncing: true, status: '正在生成同步计划…');
+    state = const CloudSyncState(syncing: true, status: 'cloud_sync_planning');
     try {
+      await _initialMaintenance;
+      await _drainStorageDeleteOutbox(client);
       final membership = await _withCloudTimeout(
         client
             .from('space_members')
@@ -342,20 +590,28 @@ class CloudSyncController extends StateNotifier<CloudSyncState> {
         await _withCloudTimeout(
           client
               .from('cloud_tracks')
-              .select('content_hash,media_object_path')
+              .select('content_hash,media_object_path,deleted_at')
               .eq('space_id', spaceId),
         ),
       );
-      final remoteHashes = remoteTracks
+      final activeRemoteTracks = activeCloudTrackRows(remoteTracks);
+      final remoteHashes = activeRemoteTracks
+          .map((row) => row['content_hash'] as String)
+          .toSet();
+      final deletedHashes = recycledCloudTrackRows(remoteTracks)
           .map((row) => row['content_hash'] as String)
           .toSet();
       final localHashes = library.tracks
           .map((track) => track.contentHash)
           .toSet();
       final upload = library.tracks
-          .where((track) => !remoteHashes.contains(track.contentHash))
+          .where(
+            (track) =>
+                !remoteHashes.contains(track.contentHash) &&
+                !deletedHashes.contains(track.contentHash),
+          )
           .length;
-      final download = remoteTracks
+      final download = activeRemoteTracks
           .where((row) => !localHashes.contains(row['content_hash'] as String))
           .length;
       final tooLarge = library.tracks
@@ -376,11 +632,16 @@ class CloudSyncController extends StateNotifier<CloudSyncState> {
           )
           .length;
       state = CloudSyncState(
-        summary:
-            '同步预览：将上传 $upload 首歌曲，下载 $download 首歌曲；'
-            '将恢复 $playlistDownload 个歌单；'
-            '${library.tracks.length - upload} 首歌曲无变化。'
-            '${tooLarge == 0 ? '' : ' $tooLarge 个超过 50 MB 的文件会跳过上传。'}',
+        summary: tooLarge == 0
+            ? 'cloud_sync_preview'
+            : 'cloud_sync_preview_with_skipped',
+        summaryArgs: {
+          'upload': '$upload',
+          'download': '$download',
+          'playlistDownload': '$playlistDownload',
+          'unchanged': '${library.tracks.length - upload}',
+          'tooLarge': '$tooLarge',
+        },
       );
       return true;
     } catch (error) {
@@ -396,17 +657,22 @@ class CloudSyncController extends StateNotifier<CloudSyncState> {
     final client = _client;
     final user = client?.auth.currentUser;
     if (client == null || user == null) {
-      state = state.copyWith(error: '请先登录 Sona 云账号。');
+      state = state.copyWith(error: 'cloud_sign_in_required');
       return false;
     }
 
-    state = const CloudSyncState(syncing: true, status: '正在连接音乐空间…');
+    state = const CloudSyncState(
+      syncing: true,
+      status: 'cloud_sync_connecting',
+    );
     var uploaded = 0;
     var downloaded = 0;
     var skippedLarge = 0;
     var eventSyncAvailable = true;
 
     try {
+      await _initialMaintenance;
+      await _drainStorageDeleteOutbox(client);
       final membership = await _withCloudTimeout(
         client
             .from('space_members')
@@ -422,8 +688,13 @@ class CloudSyncController extends StateNotifier<CloudSyncState> {
           client.from('cloud_tracks').select().eq('space_id', spaceId),
         ),
       );
+      final activeRemoteTrackRows = activeCloudTrackRows(remoteTrackRows);
+      final deletedRemoteHashes = recycledCloudTrackRows(remoteTrackRows)
+          .map((row) => row['content_hash'] as String)
+          .toSet();
       final remoteByHash = <String, Map<String, dynamic>>{
-        for (final row in remoteTrackRows) row['content_hash'] as String: row,
+        for (final row in activeRemoteTrackRows)
+          row['content_hash'] as String: row,
       };
       final remoteStates = _rows(
         await _withCloudTimeout(
@@ -438,12 +709,16 @@ class CloudSyncController extends StateNotifier<CloudSyncState> {
       final excludedCloudHashes = await _excludedCloudHashes();
       for (var index = 0; index < library.tracks.length; index++) {
         final track = library.tracks[index];
-        if (excludedCloudHashes.contains(track.contentHash)) continue;
+        if (excludedCloudHashes.contains(track.contentHash) ||
+            deletedRemoteHashes.contains(track.contentHash)) {
+          continue;
+        }
         state = state.copyWith(
           progress: library.tracks.isEmpty
               ? .2
               : .05 + .5 * index / library.tracks.length,
-          status: '正在同步 ${track.title}',
+          status: 'cloud_syncing_track',
+          statusArgs: {'title': track.title},
           error: '',
         );
         final previous = remoteByHash[track.contentHash];
@@ -513,7 +788,7 @@ class CloudSyncController extends StateNotifier<CloudSyncState> {
         }, onConflict: 'user_id,track_id');
       }
 
-      state = state.copyWith(progress: .58, status: '正在同步播放排行…');
+      state = state.copyWith(progress: .58, status: 'cloud_syncing_rankings');
       final pendingEvents = await _database.getPendingPlayEvents();
       if (pendingEvents.isNotEmpty) {
         try {
@@ -545,7 +820,7 @@ class CloudSyncController extends StateNotifier<CloudSyncState> {
         }
       }
 
-      state = state.copyWith(progress: .66, status: '正在同步歌单…');
+      state = state.copyWith(progress: .66, status: 'cloud_syncing_playlists');
       await _uploadPlaylists(
         client,
         userId: user.id,
@@ -555,10 +830,14 @@ class CloudSyncController extends StateNotifier<CloudSyncState> {
       );
       await _syncSettings(client, userId: user.id);
 
-      state = state.copyWith(progress: .74, status: '正在下载其他设备的歌曲…');
+      state = state.copyWith(
+        progress: .74,
+        status: 'cloud_sync_downloading_tracks',
+      );
       final latestCloudTracks = _rows(
         await client.from('cloud_tracks').select().eq('space_id', spaceId),
       );
+      final activeLatestCloudTracks = activeCloudTrackRows(latestCloudTracks);
       final latestStates = _rows(
         await client.from('user_track_state').select().eq('user_id', user.id),
       );
@@ -568,7 +847,7 @@ class CloudSyncController extends StateNotifier<CloudSyncState> {
       final localHashes = library.tracks
           .map((track) => track.contentHash)
           .toSet();
-      for (final remote in latestCloudTracks) {
+      for (final remote in activeLatestCloudTracks) {
         final hash = remote['content_hash'] as String;
         final remoteState = latestStateById[remote['id'] as String];
         if (!localHashes.contains(hash)) {
@@ -589,7 +868,8 @@ class CloudSyncController extends StateNotifier<CloudSyncState> {
       if (eventSyncAvailable) {
         final hashByCloudId = <String, String>{
           for (final row in latestCloudTracks)
-            row['id'] as String: row['content_hash'] as String,
+            if (!isCloudTrackDeleted(row))
+              row['id'] as String: row['content_hash'] as String,
         };
         final cloudEvents = _rows(
           await client
@@ -612,32 +892,44 @@ class CloudSyncController extends StateNotifier<CloudSyncState> {
         }
       }
 
-      state = state.copyWith(progress: .92, status: '正在恢复云端歌单…');
+      state = state.copyWith(
+        progress: .92,
+        status: 'cloud_sync_restoring_playlists',
+      );
       await _downloadPlaylists(
         client,
         spaceId: spaceId,
-        cloudTracks: latestCloudTracks,
+        cloudTracks: activeLatestCloudTracks,
       );
 
-      state = state.copyWith(progress: 1, status: '同步完成');
-      final notes = <String>[
-        if (uploaded > 0 || downloaded > 0)
-          '同步完成：已上传 $uploaded 个文件，已恢复 $downloaded 首歌曲。'
-        else
-          '已检查云端数据，这台设备已经是最新状态。',
-        '播放排行已同步。',
-        if (skippedLarge > 0) '$skippedLarge 个较大的文件暂未上传，它们仍安全保留在本机。',
-      ];
+      state = state.copyWith(progress: 1, status: 'cloud_sync_complete');
+      final changed = uploaded > 0 || downloaded > 0;
       state = state.copyWith(
         syncing: false,
-        summary: notes.join('；'),
+        cloudTracks: activeLatestCloudTracks
+            .map(CloudTrackSummary.fromRow)
+            .toList(growable: false),
+        recycledTracks: recycledCloudTrackRows(latestCloudTracks)
+            .map(CloudTrackSummary.fromRow)
+            .toList(growable: false),
+        summary: switch ((changed, skippedLarge > 0)) {
+          (true, true) => 'cloud_sync_complete_changes_with_skipped',
+          (true, false) => 'cloud_sync_complete_changes',
+          (false, true) => 'cloud_sync_complete_unchanged_with_skipped',
+          (false, false) => 'cloud_sync_complete_unchanged',
+        },
+        summaryArgs: {
+          'uploaded': '$uploaded',
+          'downloaded': '$downloaded',
+          'skippedLarge': '$skippedLarge',
+        },
         error: '',
       );
       return true;
     } catch (error) {
       state = state.copyWith(
         syncing: false,
-        status: '同步中断',
+        status: 'cloud_sync_interrupted',
         offline: _isOfflineFailure(error),
         error: _friendlyError(error),
       );
@@ -685,33 +977,31 @@ class CloudSyncController extends StateNotifier<CloudSyncState> {
       folder.path,
       path_util.basename(objectPath),
     );
-    final file = File(localPath);
-    if (!file.existsSync()) {
-      await file.writeAsBytes(
-        await client.storage.from('sona-media').download(objectPath),
-        flush: true,
-      );
-    }
+    await _cloudFiles.ensure(
+      destination: File(localPath),
+      openStream: () =>
+          client.storage.from('sona-media').downloadStream(objectPath),
+      expectedLength: (remote['file_size'] as num?)?.toInt(),
+      expectedSha256: remote['content_hash'] as String?,
+    );
 
     String? videoPath;
     final videoObject = remote['video_object_path'] as String?;
     if (videoObject != null) {
       videoPath = path_util.join(folder.path, path_util.basename(videoObject));
-      final videoFile = File(videoPath);
-      if (!videoFile.existsSync()) {
-        await videoFile.writeAsBytes(
-          await client.storage.from('sona-media').download(videoObject),
-          flush: true,
-        );
-      }
+      await _cloudFiles.ensure(
+        destination: File(videoPath),
+        openStream: () =>
+            client.storage.from('sona-media').downloadStream(videoObject),
+      );
     }
 
     final inserted = await _database.insertTrack(
       Track(
         path: localPath,
         title: remote['title'] as String,
-        artist: remote['artist'] as String? ?? '未知歌手',
-        album: remote['album'] as String? ?? '未知专辑',
+        artist: remote['artist'] as String? ?? TrackNameParser.unknownArtist,
+        album: remote['album'] as String? ?? TrackNameParser.unknownAlbum,
         duration: Duration(
           milliseconds: (remote['duration_ms'] as num? ?? 0).toInt(),
         ),
@@ -790,22 +1080,31 @@ class CloudSyncController extends StateNotifier<CloudSyncState> {
             .eq('id', playlistId);
       }
       final tracks = await _database.getTracksForPlaylist(playlist.id);
-      await client
-          .from('cloud_playlist_tracks')
-          .delete()
-          .eq('playlist_id', playlistId);
-      final items = <Map<String, Object?>>[];
-      for (var position = 0; position < tracks.length; position++) {
-        final cloudTrackId = cloudIdByHash[tracks[position].contentHash];
-        if (cloudTrackId == null) continue;
-        items.add({
-          'playlist_id': playlistId,
-          'track_id': cloudTrackId,
-          'sort_order': position,
-        });
+      final trackIds = <String>[];
+      for (final track in tracks) {
+        final cloudTrackId = cloudIdByHash[track.contentHash];
+        if (cloudTrackId == null) {
+          // Publishing a shortened list would make the atomic RPC faithfully
+          // replace the cloud playlist with incomplete data. Fail the sync
+          // instead, leaving the previous cloud playlist untouched.
+          throw StateError('cloud_playlist_track_not_uploaded');
+        }
+        trackIds.add(cloudTrackId);
       }
-      if (items.isNotEmpty) {
-        await client.from('cloud_playlist_tracks').insert(items);
+      final replaced = await _withCloudTimeout(
+        client.rpc(
+          'replace_cloud_playlist_tracks',
+          params: {
+            'target_playlist': playlistId,
+            'target_space': spaceId,
+            'requested_track_ids': trackIds,
+          },
+        ),
+      );
+      if (replaced is! num || replaced.toInt() != trackIds.length) {
+        throw StateError(
+          'Cloud playlist replacement returned an unexpected row count.',
+        );
       }
     }
   }
@@ -908,15 +1207,88 @@ class CloudSyncController extends StateNotifier<CloudSyncState> {
       folder.path,
       path_util.basename(objectPath),
     );
-    final file = File(localPath);
-    if (!file.existsSync()) {
-      await file.writeAsBytes(
-        await client.storage.from('sona-media').download(objectPath),
-        flush: true,
-      );
-    }
+    await _cloudFiles.ensure(
+      destination: File(localPath),
+      openStream: () =>
+          client.storage.from('sona-media').downloadStream(objectPath),
+    );
     return localPath;
   }
+
+  Future<void> _cleanupInterruptedCloudDownloads() async {
+    try {
+      final support = await getApplicationSupportDirectory();
+      await AtomicCloudFileCache.cleanupPartFiles(
+        Directory(path_util.join(support.path, 'SonaCloud')),
+      );
+    } catch (_) {
+      // A locked partial is never a final cache hit and is retried next time.
+    }
+  }
+
+  Future<void> _enqueueStorageDeletes({
+    required String userId,
+    required Iterable<String> objects,
+  }) {
+    final normalized = objects
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toList(growable: false);
+    if (normalized.isEmpty) return Future<void>.value();
+    return _storageCleanupTasks.run(() async {
+      final key = _storageDeleteOutboxKey(userId);
+      final current = CloudStorageDeleteOutbox.decode(
+        await _database.getSetting(key),
+      );
+      await _database.setSetting(key, current.addAll(normalized).encode());
+    });
+  }
+
+  Future<void> _discardStorageDeletes({
+    required String userId,
+    required Iterable<String?> objects,
+  }) {
+    final normalized = objects
+        .whereType<String>()
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toList(growable: false);
+    if (normalized.isEmpty) return Future<void>.value();
+    return _storageCleanupTasks.run(() async {
+      final key = _storageDeleteOutboxKey(userId);
+      final current = CloudStorageDeleteOutbox.decode(
+        await _database.getSetting(key),
+      );
+      if (current.isEmpty) return;
+      await _database.setSetting(key, current.removeAll(normalized).encode());
+    });
+  }
+
+  Future<void> _drainStorageDeleteOutbox(SupabaseClient client) {
+    return _storageCleanupTasks.run(() async {
+      final userId = client.auth.currentUser?.id;
+      if (userId == null) return;
+      final key = _storageDeleteOutboxKey(userId);
+      final current = CloudStorageDeleteOutbox.decode(
+        await _database.getSetting(key),
+      );
+      if (current.isEmpty) return;
+      final batch = current.objects.toList(growable: false)..sort();
+      try {
+        await _withCloudTimeout(
+          client.storage.from('sona-media').remove(batch),
+        );
+      } catch (_) {
+        // Keep every path. A partially successful batch remains safe because
+        // Storage removal is idempotent and orphan-only RLS protects live rows.
+        return;
+      }
+      await _database.setSetting(key, current.removeAll(batch).encode());
+    });
+  }
+
+  String _storageDeleteOutboxKey(String userId) =>
+      '$_storageDeleteOutboxPrefix.$userId';
 
   Future<void> _syncSettings(
     SupabaseClient client, {
@@ -1020,22 +1392,24 @@ class CloudSyncController extends StateNotifier<CloudSyncState> {
   String _friendlyError(Object error) {
     final value = '$error';
     if (_isOfflineFailure(error)) {
-      return '网络不可用：当前处于离线状态，无法连接至云端。本地曲库和播放仍可正常使用。';
+      return 'cloud_error_offline';
     }
-    if (value.contains('Invalid login credentials')) return '账号名或密码不正确。';
+    if (value.contains('Invalid login credentials')) {
+      return 'cloud_error_invalid_credentials';
+    }
     if (value.contains('row-level security')) {
-      return '云端权限暂时没有配置完整，本地数据不受影响。';
+      return 'cloud_error_permission';
     }
     if (value.contains('SocketException')) {
-      return '网络连接失败，本地数据没有受影响。';
+      return 'cloud_error_connection';
     }
     if (value.contains('schema cache') || value.contains('PGRST204')) {
-      return '云端资料结构正在更新，本地数据不受影响，请稍后重试。';
+      return 'cloud_error_schema';
     }
     if (value.contains('StorageException')) {
-      return '云端媒体暂时无法更新，本地文件不受影响，请稍后重试。';
+      return 'cloud_error_media';
     }
-    return '云同步暂时没有完成，本地数据不受影响，请稍后重试。';
+    return 'cloud_error_generic';
   }
 }
 

@@ -40,9 +40,9 @@ class TrackImporter {
         .toList(growable: false);
   }
 
-  Future<List<String>> pickAudioDirectory() async {
+  Future<List<String>> pickAudioDirectory({String? dialogTitle}) async {
     final directoryPath = await FilePicker.getDirectoryPath(
-      dialogTitle: '选择要扫描的音乐 / MV 文件夹',
+      dialogTitle: dialogTitle,
     );
     if (directoryPath == null) return const [];
 
@@ -74,7 +74,7 @@ class TrackImporter {
 
   Future<Duration> probeVideoDuration(String filePath) async {
     final player = Player(
-      configuration: const PlayerConfiguration(title: 'Sona 媒体信息'),
+      configuration: const PlayerConfiguration(title: 'Sona'),
     );
     try {
       await player.open(Media(filePath), play: false);
@@ -93,7 +93,7 @@ class TrackImporter {
 Future<Track> _inspectTrack(String filePath) async {
   final file = File(filePath);
   if (!await file.exists()) {
-    throw FileSystemException('文件不存在', filePath);
+    throw FileSystemException('track_file_missing', filePath);
   }
 
   final extension = path_util

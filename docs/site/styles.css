@@ -17,7 +17,7 @@
 }
 
 * { box-sizing: border-box; }
-html { overflow-x: clip; scroll-behavior: smooth; }
+html { scroll-behavior: smooth; overflow-x: hidden; }
 body {
   margin: 0;
   min-width: 320px;
@@ -116,18 +116,18 @@ h1 em { color: var(--accent); font-style: normal; }
 .features, .experience, .technology, .download { padding-top: 160px; }
 .section-heading { display: grid; grid-template-columns: 1.25fr .75fr; gap: 90px; align-items: end; margin-bottom: 60px; }
 .section-heading > p { max-width: 500px; margin-bottom: 6px; color: var(--muted); }
-.feature-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
-.feature-card { position: relative; min-height: 300px; padding: 34px; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line); border-radius: 26px; background: linear-gradient(145deg, rgba(255,255,255,.055), rgba(255,255,255,.015)); }
+.feature-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+.feature-card { position: relative; min-height: 330px; padding: 38px; overflow: hidden; border: 1px solid var(--line); border-radius: 26px; background: linear-gradient(145deg, rgba(255,255,255,.055), rgba(255,255,255,.015)); }
 .feature-card::before { content: ""; position: absolute; width: 200px; height: 200px; right: -80px; top: -80px; border-radius: 50%; background: rgba(157,233,78,.05); filter: blur(10px); }
 .feature-card:hover { border-color: rgba(157,233,78,.28); background: linear-gradient(145deg, rgba(157,233,78,.075), rgba(255,255,255,.018)); }
-.feature-card-signal { padding-bottom: 88px; }
-.feature-card-wide { min-height: 300px; grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(280px, .85fr); align-items: center; gap: 40px; }
-.feature-icon { display: grid; place-items: center; width: 48px; height: 48px; margin-bottom: 30px; border-radius: 15px; background: var(--accent); color: #17200e; font-size: 1.2rem; font-weight: 900; box-shadow: inset 0 1px rgba(255,255,255,.48); }
+.feature-card-large { min-height: 390px; grid-row: span 2; }
+.feature-card-wide { min-height: 300px; grid-column: 1 / -1; display: grid; grid-template-columns: 1fr .8fr; align-items: center; }
+.feature-icon { display: grid; place-items: center; width: 48px; height: 48px; margin-bottom: 42px; border-radius: 15px; background: var(--accent); color: #17200e; font-size: 1.2rem; font-weight: 900; box-shadow: inset 0 1px rgba(255,255,255,.48); }
 .feature-icon.accent { background: #ff7d55; }.feature-icon.blue { background: var(--blue); }.feature-icon.pink { background: var(--pink); }.feature-icon.warm { background: var(--warm); }
 .feature-label { margin-bottom: 8px; color: #7f897a; font-size: .7rem; font-weight: 750; letter-spacing: .16em; }
 .feature-card h3 { margin-bottom: 12px; font-size: clamp(1.55rem, 2.5vw, 2.2rem); line-height: 1.08; letter-spacing: -.035em; }
 .feature-card > p:last-of-type, .feature-card > div > p:last-of-type { max-width: 560px; margin-bottom: 0; color: var(--muted); }
-.signal { position: absolute; left: 34px; right: 34px; bottom: 24px; height: 48px; display: flex; align-items: center; gap: 9px; }
+.signal { position: absolute; left: 38px; right: 38px; bottom: 35px; height: 62px; display: flex; align-items: center; gap: 9px; }
 .signal::before { content: ""; position: absolute; left: 0; right: 0; height: 1px; background: rgba(157,233,78,.2); }
 .signal i { z-index: 1; width: 7px; height: 18px; border-radius: 9px; background: linear-gradient(var(--accent), rgba(157,233,78,.18)); animation: wave 1.4s ease-in-out infinite alternate; }
 .signal i:nth-child(2) { height: 38px; animation-delay: -.4s; }.signal i:nth-child(3) { height: 25px; animation-delay: -.8s; }.signal i:nth-child(4) { height: 51px; animation-delay: -.2s; }.signal i:nth-child(5) { height: 31px; animation-delay: -.7s; }.signal i:nth-child(6) { height: 44px; animation-delay: -.5s; }.signal i:nth-child(7) { height: 20px; animation-delay: -.9s; }
@@ -171,6 +171,9 @@ h1 em { color: var(--accent); font-style: normal; }
 .download-card { min-height: 170px; padding: 30px; display: grid; grid-template-columns: 58px 1fr auto; gap: 22px; align-items: center; text-align: left; border: 1px solid var(--line); border-radius: 24px; background: rgba(255,255,255,.035); transition: border-color .2s ease, background .2s ease, transform .2s ease; }
 .download-card:hover { transform: translateY(-4px); border-color: rgba(157,233,78,.35); background: rgba(157,233,78,.08); }
 .download-card small { color: var(--muted); }.download-card h3 { margin: 2px 0; font-size: 1.35rem; }.download-card p { margin: 0; color: #7f897a; font-size: .78rem; }.download-card > b { color: var(--accent); }
+.download-alternative { margin: 22px 0 0; color: var(--muted); }
+.download-alternative a { color: var(--text); font-weight: 700; text-decoration: none; }
+.download-alternative a:hover { color: var(--accent); }
 .platform-icon { display: grid; place-items: center; width: 58px; height: 58px; border-radius: 18px; background: var(--accent); color: #19210f; }
 .platform-icon.windows { grid-template-columns: 1fr 1fr; gap: 3px; padding: 15px; }.platform-icon.windows i { width: 12px; height: 12px; background: #18210f; }
 .platform-icon.android { font-size: 1.8rem; }
@@ -192,26 +195,31 @@ h1 em { color: var(--accent); font-style: normal; }
   .privacy { grid-template-columns: 90px 1fr; }.privacy-list { grid-column: 1 / -1; }
 }
 
+/* Keep the fixed header relaxed at common tablet widths.  At 768px the
+   desktop navigation otherwise squeezes both language and primary actions
+   into multi-line pills. */
+@media (max-width: 860px) {
+  .site-header { top: 8px; width: calc(100% - 16px); grid-template-columns: 1fr auto; }
+  .desktop-nav, .text-link { display: none; }
+  .header-actions { gap: 8px; }
+  .language-toggle { min-width: 40px; padding: 0 10px; }
+}
+
 @media (max-width: 760px) {
   .site-header { top: 8px; width: calc(100% - 16px); grid-template-columns: 1fr auto; }
   .desktop-nav, .text-link { display: none; }
   .hero { padding: 126px 20px 100px; gap: 62px; }
   h1 { font-size: clamp(3.2rem, 17vw, 5.2rem); }
   .hero-proof { gap: 14px; }
-  .hero-visual { width: 100%; }.hero-glow { right: 0; }.app-frame-hero { transform: none; }.note-one { left: 4px; bottom: -48px; }.note-two { display: none; }
+  .hero-visual { width: 100%; }.hero-glow { right: 0; }.note-one { left: 4px; bottom: -48px; }.note-two { display: none; }
   .section-shell { width: min(100% - 24px, 1180px); }
   .manifesto { padding: 56px 26px; }.manifesto-grid, .section-heading, .technology { grid-template-columns: 1fr; gap: 30px; }
   .features, .experience, .technology, .download { padding-top: 110px; }
-  .feature-grid { grid-template-columns: 1fr; gap: 16px; }.feature-card { min-height: 0; }.feature-card-signal { padding-bottom: 88px; }.feature-card-wide { grid-column: auto; grid-template-columns: 1fr; gap: 10px; }.theme-orbits { width: 220px; margin-top: 24px; }
+  .feature-grid { grid-template-columns: 1fr; }.feature-card-large { grid-row: auto; }.feature-card-wide { grid-column: auto; grid-template-columns: 1fr; }.theme-orbits { width: 240px; margin-top: 30px; }
   .showcase-tab { padding: 8px 12px; font-size: .82rem; }.showcase-frame { border-radius: 20px; }
-  .privacy { margin-top: 110px; padding: 32px 24px; grid-template-columns: 62px minmax(0, 1fr); gap: 22px; }.privacy > * { min-width: 0; }.privacy-mark { width: 58px; height: 58px; border-radius: 19px; font-size: 1.7rem; }
+  .privacy { margin-top: 110px; padding: 32px 24px; grid-template-columns: 62px minmax(0, 1fr); gap: 22px; }.privacy-mark { width: 58px; height: 58px; border-radius: 19px; font-size: 1.7rem; }
   .download-grid { grid-template-columns: 1fr; }.download-card { grid-template-columns: 50px 1fr; min-height: 145px; padding: 24px; }.download-card > b { grid-column: 2; }.platform-icon { width: 50px; height: 50px; }
   .site-footer { grid-template-columns: 1fr; text-align: center; }.site-footer .brand { margin: auto; }.site-footer > div { justify-content: center; flex-wrap: wrap; }
-}
-
-@media (max-width: 360px) {
-  .privacy { grid-template-columns: 1fr; }
-  .privacy-list { grid-column: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -23,6 +23,9 @@ import '../../settings/presentation/widgets/appearance_backdrop.dart';
 import '../../settings/presentation/widgets/appearance_picker.dart';
 import '../application/shell_navigation.dart';
 
+@visibleForTesting
+bool shouldUseCompactDesktopSidebar(double windowHeight) => windowHeight < 700;
+
 class MainShell extends ConsumerStatefulWidget {
   const MainShell({super.key});
 
@@ -764,6 +767,9 @@ class _DesktopSidebarState extends ConsumerState<_DesktopSidebar> {
     final onTogglePlaylists = widget.onTogglePlaylists;
     final onConfigurePlaylists = widget.onConfigurePlaylists;
     final onAccount = widget.onAccount;
+    final compact = shouldUseCompactDesktopSidebar(
+      MediaQuery.sizeOf(context).height,
+    );
     final useLightForeground =
         !appearance.usesCustom && appearance.preset.prefersLightHomeForeground;
     final mutedForeground = useLightForeground
@@ -775,7 +781,7 @@ class _DesktopSidebarState extends ConsumerState<_DesktopSidebar> {
         ? account.displayName
         : account.username.isNotEmpty
         ? account.username
-        : 'Sona 用户';
+        : context.tr('Sona 用户');
     return SizedBox(
       width: 248,
       child: LiquidGlass(
@@ -786,7 +792,12 @@ class _DesktopSidebarState extends ConsumerState<_DesktopSidebar> {
         borderWidth: 0.8,
         child: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+            padding: EdgeInsets.fromLTRB(
+              20,
+              compact ? 10 : 16,
+              20,
+              compact ? 12 : 20,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -827,7 +838,7 @@ class _DesktopSidebarState extends ConsumerState<_DesktopSidebar> {
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 12),
+                              SizedBox(height: compact ? 7 : 12),
                               _NavigationItem(
                                 accent: appearance.accent,
                                 lightForeground: useLightForeground,
@@ -962,7 +973,7 @@ class _DesktopSidebarState extends ConsumerState<_DesktopSidebar> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 10),
+                SizedBox(height: compact ? 5 : 10),
                 _NavigationItem(
                   accent: appearance.accent,
                   lightForeground: useLightForeground,
@@ -979,7 +990,7 @@ class _DesktopSidebarState extends ConsumerState<_DesktopSidebar> {
                   selected: selectedIndex == 3,
                   onTap: () => onSelected(3),
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: compact ? 7 : 12),
                 LiquidGlass(
                   borderRadius: 15,
                   blur: 16,
@@ -995,7 +1006,7 @@ class _DesktopSidebarState extends ConsumerState<_DesktopSidebar> {
                       onTap: onAccount,
                       borderRadius: BorderRadius.circular(15),
                       child: Padding(
-                        padding: const EdgeInsets.all(13),
+                        padding: EdgeInsets.all(compact ? 10 : 13),
                         child: Row(
                           children: [
                             CircleAvatar(
@@ -1019,7 +1030,7 @@ class _DesktopSidebarState extends ConsumerState<_DesktopSidebar> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    signedIn ? accountName : '本地模式',
+                                    signedIn ? accountName : context.tr('本地模式'),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
@@ -1031,7 +1042,7 @@ class _DesktopSidebarState extends ConsumerState<_DesktopSidebar> {
                                   ),
                                   if (!signedIn)
                                     Text(
-                                      '前往设置连接云账号',
+                                      context.tr('前往设置连接云账号'),
                                       style: TextStyle(
                                         color: useLightForeground
                                             ? Colors.white.withValues(
@@ -1219,7 +1230,7 @@ class _Brand extends StatelessWidget {
               ),
             ),
             Text(
-              '本地音乐空间',
+              context.tr('本地音乐空间'),
               style: TextStyle(
                 color: mutedForeground,
                 fontSize: 10,
@@ -1253,15 +1264,16 @@ class _NavigationItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final compact = shouldUseCompactDesktopSidebar(
+      MediaQuery.sizeOf(context).height,
+    );
     final foreground = lightForeground ? Colors.white : AppColors.textPrimary;
     final mutedForeground = lightForeground
         ? Colors.white.withValues(alpha: 0.86)
         : AppColors.textSecondary;
-    final displayLabel = icon == Icons.favorite_rounded
-        ? '\u6211\u7684\u6536\u85cf'
-        : label;
+    final displayLabel = label;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 5),
+      padding: EdgeInsets.only(bottom: compact ? 3 : 5),
       child: Material(
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(13),
@@ -1271,7 +1283,10 @@ class _NavigationItem extends StatelessWidget {
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 240),
             curve: Curves.easeOutCubic,
-            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
+            padding: EdgeInsets.symmetric(
+              horizontal: 13,
+              vertical: compact ? 8 : 12,
+            ),
             decoration: BoxDecoration(
               color: selected
                   ? accent.withValues(alpha: 0.16)
@@ -1338,7 +1353,9 @@ class _ImportProgress extends StatelessWidget {
                 const SizedBox(width: 9),
                 Expanded(
                   child: Text(
-                    '正在分析 ${state.importingFile}',
+                    context
+                        .tr('正在分析 {file}')
+                        .replaceAll('{file}', state.importingFile),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.titleMedium,

@@ -1,14 +1,16 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as path_util;
 
-import '../../../core/utils/chinese_text.dart';
 import '../data/library_database.dart';
 import '../data/track_importer.dart';
 import '../data/track_identifier.dart';
 import '../domain/playlist_info.dart';
 import '../domain/track.dart';
 import '../domain/track_identification.dart';
+import '../domain/track_metadata_revision.dart';
 
 final libraryControllerProvider =
     StateNotifierProvider<LibraryController, LibraryState>((ref) {
@@ -86,11 +88,17 @@ class ImportSummary {
   final int skipped;
   final int failed;
   final int needsReview;
+}
 
-  String get message {
-    final base = '导入 $added 首，跳过 $skipped 首，失败 $failed 首';
-    return needsReview == 0 ? base : '$base · $needsReview 首可智能整理';
-  }
+/// A locale-neutral failure emitted by library-domain operations.
+/// Presentation code translates [code] at the point of display.
+class LibraryOperationException implements Exception {
+  const LibraryOperationException(this.code);
+
+  final String code;
+
+  @override
+  String toString() => code;
 }
 
 class LibraryController extends StateNotifier<LibraryState> {
@@ -122,8 +130,11 @@ class LibraryController extends StateNotifier<LibraryState> {
         errorMessage: '',
       );
       unawaited(_backfillVideoDurations());
-    } catch (error) {
-      state = state.copyWith(isLoading: false, errorMessage: '曲库读取失败：$error');
+    } catch (_) {
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: 'library_read_failed',
+      );
     }
   }
 
@@ -351,10 +362,12 @@ class LibraryController extends StateNotifier<LibraryState> {
   Future<TrackIdentificationResult> identifyTrack(Track track) async {
     final id = track.id;
     if (id == null) {
-      return const TrackIdentificationResult(message: '歌曲尚未写入曲库，无法识别。');
+      return const TrackIdentificationResult(message: 'track_not_persisted');
     }
     if (!_identifyingTrackIds.add(id)) {
-      return const TrackIdentificationResult(message: '这首歌正在识别，请稍候。');
+      return const TrackIdentificationResult(
+        message: 'identification_in_progress',
+      );
     }
     try {
       final clientKey = await _database.getSetting(
@@ -379,17 +392,90 @@ class LibraryController extends StateNotifier<LibraryState> {
   ) async {
     final id = track.id;
     if (id == null) return null;
-    final title = toSimplifiedChinese(candidate.title).trim();
-    final artist = toSimplifiedChinese(candidate.artist).trim();
-    final album = toSimplifiedChinese(candidate.album).trim();
+    // Persist the provider's canonical spelling. Locale conversion belongs in
+    // the presentation layer so switching Sona between Hans, Hant and English
+    // never destroys the original metadata returned by AcoustID/MusicBrainz.
+    final title = candidate.title.trim();
+    final artist = candidate.artist.trim();
+    final album = candidate.album.trim().isEmpty
+        ? track.album.trim()
+        : candidate.album.trim();
     if (title.isEmpty || artist.isEmpty) return null;
-    await _database.updateTrackMetadata(
-      id,
+    return updateTrackDetails(
+      track,
       title: title,
       artist: artist,
       album: album,
+      changeKind: 'identification',
+      source: candidate.source,
     );
-    final updated = track.copyWith(title: title, artist: artist, album: album);
+  }
+
+  Future<Track?> updateTrackDetails(
+    Track track, {
+    required String title,
+    required String artist,
+    required String album,
+    String? selectedArtworkPath,
+    bool clearArtwork = false,
+    String changeKind = 'manual',
+    String source = 'manual_edit',
+  }) async {
+    final id = track.id;
+    if (id == null) return null;
+    final normalizedTitle = title.trim();
+    final normalizedArtist = artist.trim();
+    final normalizedAlbum = album.trim();
+    if (normalizedTitle.isEmpty || normalizedArtist.isEmpty) return null;
+
+    final liveTrack =
+        state.tracks.cast<Track?>().firstWhere(
+          (item) => item?.id == id,
+          orElse: () => track,
+        ) ??
+        track;
+    String? managedArtworkPath;
+    var nextArtworkPath = clearArtwork ? null : liveTrack.artworkPath;
+    if (!clearArtwork && selectedArtworkPath?.trim().isNotEmpty == true) {
+      managedArtworkPath = await _copyArtworkToManagedDirectory(
+        id,
+        selectedArtworkPath!.trim(),
+      );
+      nextArtworkPath = managedArtworkPath;
+    }
+
+    try {
+      final revision = await _database.updateTrackMetadataWithHistory(
+        id,
+        title: normalizedTitle,
+        artist: normalizedArtist,
+        album: normalizedAlbum,
+        artworkPath: nextArtworkPath,
+        changeKind: changeKind,
+        source: source,
+      );
+      if (revision == null) {
+        if (managedArtworkPath != null &&
+            managedArtworkPath != liveTrack.artworkPath) {
+          await _deleteQuietly(managedArtworkPath);
+        }
+        return liveTrack;
+      }
+    } catch (_) {
+      if (managedArtworkPath != null &&
+          managedArtworkPath != liveTrack.artworkPath) {
+        await _deleteQuietly(managedArtworkPath);
+      }
+      rethrow;
+    }
+
+    final updated = liveTrack.copyWith(
+      title: normalizedTitle,
+      artist: normalizedArtist,
+      album: normalizedAlbum,
+      artworkPath: nextArtworkPath,
+      clearArtworkPath: nextArtworkPath == null,
+    );
     state = state.copyWith(
       tracks: state.tracks
           .map((item) => item.id == id ? updated : item)
@@ -398,11 +484,83 @@ class LibraryController extends StateNotifier<LibraryState> {
     return updated;
   }
 
+  Future<List<TrackMetadataRevision>> metadataHistory(Track track) {
+    final id = track.id;
+    if (id == null) return Future.value(const []);
+    return _database.getTrackMetadataHistory(id);
+  }
+
+  Future<Track?> undoLatestMetadataChange(Track track) async {
+    final id = track.id;
+    if (id == null) return null;
+    final updated = await _database.undoLatestTrackMetadataRevision(id);
+    if (updated == null) return null;
+    state = state.copyWith(
+      tracks: state.tracks
+          .map((item) => item.id == id ? updated : item)
+          .toList(growable: false),
+    );
+    return updated;
+  }
+
+  Future<String> _copyArtworkToManagedDirectory(
+    int trackId,
+    String sourcePath,
+  ) async {
+    final source = File(sourcePath);
+    if (!await source.exists()) {
+      throw const LibraryOperationException('cover_file_missing');
+    }
+    const supported = {'.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp'};
+    final extension = path_util.extension(source.path).toLowerCase();
+    if (!supported.contains(extension)) {
+      throw const LibraryOperationException('cover_file_type_unsupported');
+    }
+    final size = await source.length();
+    if (size <= 0 || size > 30 * 1024 * 1024) {
+      throw const LibraryOperationException('cover_file_too_large');
+    }
+    final databaseDirectory = Directory(
+      path_util.dirname(_database.databasePath),
+    );
+    final artworkDirectory = Directory(
+      path_util.join(databaseDirectory.path, 'track_artwork'),
+    );
+    await artworkDirectory.create(recursive: true);
+    final stamp = DateTime.now().microsecondsSinceEpoch;
+    final destination = path_util.join(
+      artworkDirectory.path,
+      'track-$trackId-$stamp$extension',
+    );
+    final temporary = '$destination.part';
+    final temporaryFile = File(temporary);
+    try {
+      await source.copy(temporary);
+      return (await temporaryFile.rename(destination)).path;
+    } finally {
+      try {
+        if (await temporaryFile.exists()) await temporaryFile.delete();
+      } on FileSystemException {
+        // Cleanup must not hide the original copy/rename failure. A stale
+        // partial is never referenced by SQLite and is safe to prune later.
+      }
+    }
+  }
+
+  Future<void> _deleteQuietly(String filePath) async {
+    try {
+      final file = File(filePath);
+      if (await file.exists()) await file.delete();
+    } on FileSystemException {
+      // An orphaned cover is harmless and can be cleaned by maintenance later.
+    }
+  }
+
   Future<Track> pairAudioWithVideoTrack(Track track, String audioPath) async {
     if (track.id == null || !track.isVideoOnly) return track;
     final inspected = await _importer.inspect(audioPath);
     if (inspected.isVideoOnly) {
-      throw StateError('请选择音频文件。');
+      throw const LibraryOperationException('audio_file_required');
     }
     final duplicate = state.tracks.any(
       (item) =>
@@ -411,7 +569,7 @@ class LibraryController extends StateNotifier<LibraryState> {
               item.contentHash == inspected.contentHash),
     );
     if (duplicate) {
-      throw StateError('这首音频已经在曲库中。');
+      throw const LibraryOperationException('audio_already_in_library');
     }
 
     final updated = Track(

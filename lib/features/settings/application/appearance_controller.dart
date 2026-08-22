@@ -9,6 +9,7 @@ import 'package:path/path.dart' as path_util;
 import 'package:path_provider/path_provider.dart';
 import 'package:image/image.dart' as img;
 
+import '../../../core/performance/visual_effects.dart';
 import '../../library/data/library_database.dart';
 
 class BackgroundPreset {
@@ -262,6 +263,7 @@ class AppearanceState {
     this.customBackgroundPath,
     this.customAccent,
     this.customBackgrounds = const [],
+    this.effectsMode = VisualEffectsMode.full,
     this.isLoading = true,
   });
 
@@ -269,6 +271,7 @@ class AppearanceState {
   final String? customBackgroundPath;
   final Color? customAccent;
   final List<CustomBackground> customBackgrounds;
+  final VisualEffectsMode effectsMode;
   final bool isLoading;
 
   bool get usesCustom =>
@@ -287,6 +290,7 @@ class AppearanceState {
     String? customBackgroundPath,
     Color? customAccent,
     List<CustomBackground>? customBackgrounds,
+    VisualEffectsMode? effectsMode,
     bool clearCustomBackground = false,
     bool? isLoading,
   }) {
@@ -299,6 +303,7 @@ class AppearanceState {
           ? null
           : customAccent ?? this.customAccent,
       customBackgrounds: customBackgrounds ?? this.customBackgrounds,
+      effectsMode: effectsMode ?? this.effectsMode,
       isLoading: isLoading ?? this.isLoading,
     );
   }
@@ -335,6 +340,18 @@ class AppearanceController extends StateNotifier<AppearanceState> {
     final customBackgroundsValue = await _database.getSetting(
       'appearance.custom_backgrounds',
     );
+    final storedEffectsMode = await _database.getSetting(
+      'appearance.effects_mode',
+    );
+    final effectsMode = VisualEffectsMode.fromStorage(storedEffectsMode);
+    _applyImageCacheBudget(effectsMode);
+    if (storedEffectsMode != null &&
+        storedEffectsMode != effectsMode.storageValue) {
+      await _database.setSetting(
+        'appearance.effects_mode',
+        effectsMode.storageValue,
+      );
+    }
     final customBackgrounds = <CustomBackground>[];
     if (customBackgroundsValue != null && customBackgroundsValue.isNotEmpty) {
       try {
@@ -370,6 +387,7 @@ class AppearanceController extends StateNotifier<AppearanceState> {
           ? null
           : Color(int.tryParse(customAccentValue) ?? 0xFFFF4F6D),
       customBackgrounds: customBackgrounds.take(5).toList(growable: false),
+      effectsMode: effectsMode,
       clearCustomBackground:
           customPath == null || !File(customPath).existsSync(),
       isLoading: false,
@@ -381,6 +399,26 @@ class AppearanceController extends StateNotifier<AppearanceState> {
     await _database.setSetting('appearance.preset', presetId);
     await _database.setSetting('appearance.custom_path', '');
     await _database.setSetting('appearance.custom_accent', '');
+  }
+
+  Future<void> setEffectsMode(VisualEffectsMode mode) async {
+    if (state.effectsMode == mode) return;
+    _applyImageCacheBudget(mode);
+    state = state.copyWith(effectsMode: mode);
+    await _database.setSetting('appearance.effects_mode', mode.storageValue);
+  }
+
+  void _applyImageCacheBudget(VisualEffectsMode mode) {
+    final compactPlatform =
+        defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
+    PaintingBinding.instance.imageCache.maximumSizeBytes =
+        imageCacheBudgetBytes(mode: mode, compactPlatform: compactPlatform);
+    PaintingBinding.instance.imageCache.maximumSize = switch (mode) {
+      VisualEffectsMode.full => compactPlatform ? 120 : 180,
+      VisualEffectsMode.energySaver => compactPlatform ? 80 : 120,
+      VisualEffectsMode.off => compactPlatform ? 60 : 90,
+    };
   }
 
   Future<void> selectCustomBackground(CustomBackground background) async {

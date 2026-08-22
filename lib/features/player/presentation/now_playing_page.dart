@@ -10,6 +10,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../../../core/localization/sona_localizations.dart';
+import '../../../core/performance/visual_effects.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/latest_snack_bar.dart';
@@ -28,6 +29,88 @@ import 'vinyl_record.dart';
 import 'playback_mode_button.dart';
 
 enum PlayerVisualMode { vinyl, musicVideo }
+
+const _dedicatedPlayerAmbientPresetIds = {
+  'cyan_glass',
+  'sakura',
+  'aurora',
+  'farm',
+  'clean',
+  'vinyl_bloom',
+  'mist_orbs',
+  'obsidian_rings',
+};
+
+bool shouldUseDedicatedPlayerAmbient({
+  required String presetId,
+  required PlayerVisualMode visualMode,
+  required VisualEffectsMode effectsMode,
+  required bool animationsDisabled,
+}) {
+  return visualMode == PlayerVisualMode.vinyl &&
+      effectsMode == VisualEffectsMode.full &&
+      !animationsDisabled &&
+      _dedicatedPlayerAmbientPresetIds.contains(presetId);
+}
+
+bool shouldRunVinylTicker({
+  required bool isPlaying,
+  required VisualEffectsMode effectsMode,
+  required bool animationsDisabled,
+}) {
+  return isPlaying &&
+      effectsMode != VisualEffectsMode.off &&
+      !animationsDisabled;
+}
+
+/// One native video output belongs to the app-wide media_kit [Player].
+///
+/// media_kit reuses the native output for a player, but every new
+/// `VideoController` wrapper attaches another pair of notifier listeners that
+/// is removed only when the player is disposed. Keeping one wrapper here avoids
+/// that page-visit growth and gives output sizing a single source of truth.
+final videoOutputControllerProvider = Provider<VideoController>((ref) {
+  final player = ref.watch(playerControllerProvider.notifier).player;
+  final initialEffectsMode = ref.read(
+    appearanceControllerProvider.select((state) => state.effectsMode),
+  );
+  final initialOutputSize = videoOutputSizeFor(initialEffectsMode);
+  final controller = defaultTargetPlatform == TargetPlatform.windows
+      ? VideoController(
+          player,
+          configuration: VideoControllerConfiguration(
+            enableHardwareAcceleration: false,
+            width: initialOutputSize.width,
+            height: initialOutputSize.height,
+          ),
+        )
+      : VideoController(player);
+  if (defaultTargetPlatform == TargetPlatform.windows) {
+    Future<void> applyOutputSize(VisualEffectsMode mode) async {
+      final size = videoOutputSizeFor(mode);
+      try {
+        await controller.setSize(width: size.width, height: size.height);
+      } catch (error) {
+        debugPrint('Unable to resize the Windows video output: $error');
+      }
+    }
+
+    unawaited(applyOutputSize(initialEffectsMode));
+    ref.listen<VisualEffectsMode>(
+      appearanceControllerProvider.select((state) => state.effectsMode),
+      (_, mode) => unawaited(applyOutputSize(mode)),
+    );
+  }
+  return controller;
+});
+
+({int width, int height}) videoOutputSizeFor(VisualEffectsMode mode) {
+  return switch (mode) {
+    VisualEffectsMode.off => (width: 960, height: 540),
+    VisualEffectsMode.energySaver => (width: 1280, height: 720),
+    VisualEffectsMode.full => (width: 1920, height: 1080),
+  };
+}
 
 /// Lightweight Beta ambience for 冰青琉璃.
 ///
@@ -648,19 +731,7 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
       vsync: this,
       duration: const Duration(seconds: 16),
     );
-    final player = ref.read(playerControllerProvider.notifier).player;
-    _videoController = defaultTargetPlatform == TargetPlatform.windows
-        ? VideoController(
-            player,
-            // Several local MV files decode audio but render black through the
-            // Windows GPU texture path. Keep the conservative software path
-            // only on Windows; Android must retain media_kit's hardware-backed
-            // decoder and surface defaults.
-            configuration: const VideoControllerConfiguration(
-              enableHardwareAcceleration: false,
-            ),
-          )
-        : VideoController(player);
+    _videoController = ref.read(videoOutputControllerProvider);
     final request = widget.autoplayRequest;
     if (request != null) {
       // Reserve the video stage during the initial build, before any call to
@@ -692,6 +763,7 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
       libraryControllerProvider.select((state) => state.tracks),
     );
     final appearance = ref.watch(appearanceControllerProvider);
+    final animationsDisabled = MediaQuery.disableAnimationsOf(context);
     // A video-only request mounts this page before the native video surface is
     // ready, so [playback.currentTrack] can still be the song that was playing
     // a moment ago. Prefer the requested MV only during that hand-off. Once it
@@ -727,25 +799,25 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
       }
     }
 
-    if (playerSummary.isPlaying && !_spin.isAnimating) {
+    final runVinylTicker = shouldRunVinylTicker(
+      isPlaying: playerSummary.isPlaying,
+      effectsMode: appearance.effectsMode,
+      animationsDisabled: animationsDisabled,
+    );
+    if (runVinylTicker && !_spin.isAnimating) {
       _spin.repeat();
-    } else if (!playerSummary.isPlaying && _spin.isAnimating) {
+    } else if (!runVinylTicker && _spin.isAnimating) {
       _spin.stop();
     }
 
     final usesPlayerAmbient =
-        _mode == PlayerVisualMode.vinyl &&
         !appearance.usesCustom &&
-        const {
-          'cyan_glass',
-          'sakura',
-          'aurora',
-          'farm',
-          'clean',
-          'vinyl_bloom',
-          'mist_orbs',
-          'obsidian_rings',
-        }.contains(appearance.preset.id);
+        shouldUseDedicatedPlayerAmbient(
+          presetId: appearance.preset.id,
+          visualMode: _mode,
+          effectsMode: appearance.effectsMode,
+          animationsDisabled: animationsDisabled,
+        );
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light.copyWith(
@@ -777,24 +849,20 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
                 forPlayer: true,
               ),
             ),
-            if (appearance.preset.id == 'cyan_glass' &&
-                _mode == PlayerVisualMode.vinyl)
+            if (appearance.preset.id == 'cyan_glass' && usesPlayerAmbient)
               Positioned.fill(child: _CyanAmbientBeta(progress: _spin)),
-            if (appearance.preset.id == 'sakura' &&
-                _mode == PlayerVisualMode.vinyl)
+            if (appearance.preset.id == 'sakura' && usesPlayerAmbient)
               Positioned.fill(child: _SakuraAmbientBeta(progress: _spin)),
-            if (appearance.preset.id == 'aurora' &&
-                _mode == PlayerVisualMode.vinyl)
+            if (appearance.preset.id == 'aurora' && usesPlayerAmbient)
               Positioned.fill(child: _AuroraAmbientBeta(progress: _spin)),
-            if (appearance.preset.id == 'farm' &&
-                _mode == PlayerVisualMode.vinyl)
+            if (appearance.preset.id == 'farm' && usesPlayerAmbient)
               Positioned.fill(
                 child: _PresetAmbientBeta(
                   progress: _spin,
                   presetId: appearance.preset.id,
                 ),
               ),
-            if (_mode == PlayerVisualMode.vinyl &&
+            if (usesPlayerAmbient &&
                 (appearance.preset.id == 'clean' ||
                     appearance.preset.id == 'vinyl_bloom' ||
                     appearance.preset.id == 'mist_orbs' ||
@@ -827,7 +895,7 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
                 children: [
                   _PlayerHeader(
                     themeName: appearance.usesCustom
-                        ? '我的背景'
+                        ? context.tr('我的背景')
                         : appearance.preset.name,
                     onBack: () => Navigator.of(context).pop(),
                     onTheme: _showAppearancePicker,
@@ -903,7 +971,7 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
                         ? _MissingMediaStage(
                             key: const ValueKey('missing-vinyl'),
                             icon: Icons.album_rounded,
-                            label: '还没有配对唱片',
+                            label: context.tr('还没有配对唱片'),
                             onTap: () => _attachAudio(track!),
                           )
                         : VinylRecord(
@@ -1029,7 +1097,7 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
                     child: track?.isVideoOnly == true
                         ? _MissingMediaStage(
                             icon: Icons.album_rounded,
-                            label: '还没有配对唱片',
+                            label: context.tr('还没有配对唱片'),
                             onTap: () => _attachAudio(track!),
                           )
                         : Center(
@@ -1176,7 +1244,10 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
           top: buttonTop,
           width: buttonSize,
           height: buttonSize,
-          child: interactionButton(label: '上一首', action: player.previous),
+          child: interactionButton(
+            label: context.tr('上一首'),
+            action: player.previous,
+          ),
         ),
         Positioned(
           left: (width - buttonSize) / 2,
@@ -1184,7 +1255,7 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
           width: buttonSize,
           height: buttonSize,
           child: interactionButton(
-            label: playback.isPlaying ? '暂停' : '播放',
+            label: context.tr(playback.isPlaying ? '暂停' : '播放'),
             action: player.togglePlayPause,
             child: Center(
               child: AnimatedContainer(
@@ -1245,7 +1316,10 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
           top: buttonTop,
           width: buttonSize,
           height: buttonSize,
-          child: interactionButton(label: '下一首', action: player.next),
+          child: interactionButton(
+            label: context.tr('下一首'),
+            action: player.next,
+          ),
         ),
         Positioned(
           left: width * 0.14,
@@ -1256,7 +1330,7 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
             builder: (context, barConstraints) => Semantics(
               slider: true,
               enabled: track != null,
-              label: '播放进度',
+              label: context.tr('播放进度'),
               value: playback.duration.inMilliseconds <= 0
                   ? '0%'
                   : '${(visibleProgress * 100).round()}%',
@@ -1324,6 +1398,7 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
             track,
             request.queue,
             source: request.source,
+            sourceArgs: request.sourceArgs,
             videoSurfaceReady: true,
           );
       if (!_isCurrentMvSurfaceRequest(surfaceRequest, track)) return;
@@ -1547,7 +1622,10 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
     final updated = track.copyWith(videoPath: selectedPath);
     await _openMvSource(updated);
     if (!mounted) return;
-    showLatestSnackBar(context, const SnackBar(content: Text('MV 已与这首歌配对。')));
+    showLatestSnackBar(
+      context,
+      SnackBar(content: Text(context.tr('MV 已与这首歌配对。'))),
+    );
   }
 
   Future<void> _attachAudio(Track track) async {
@@ -1578,13 +1656,13 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
       setState(() => _mode = PlayerVisualMode.vinyl);
       showLatestSnackBar(
         context,
-        const SnackBar(content: Text('唱片音频已与这支 MV 配对。')),
+        SnackBar(content: Text(context.tr('唱片音频已与这支 MV 配对。'))),
       );
     } catch (error) {
       if (!mounted) return;
       final message = error is StateError
-          ? error.message.toString()
-          : '音频配对失败，请确认文件可用。';
+          ? context.tr(error.message.toString())
+          : context.tr('音频配对失败，请确认文件可用。');
       showLatestSnackBar(context, SnackBar(content: Text(message)));
     }
   }
@@ -1613,21 +1691,21 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
                 children: [
                   Row(
                     children: [
-                      const Expanded(
+                      Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '播放器背景',
-                              style: TextStyle(
+                              context.tr('播放器背景'),
+                              style: const TextStyle(
                                 fontSize: 20,
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
-                            SizedBox(height: 3),
+                            const SizedBox(height: 3),
                             Text(
-                              '多套明亮皮肤，也可以导入并裁切自己的图片。',
-                              style: TextStyle(color: Color(0xFF7D8799)),
+                              context.tr('多套明亮皮肤，也可以导入并裁切自己的图片。'),
+                              style: const TextStyle(color: Color(0xFF7D8799)),
                             ),
                           ],
                         ),
@@ -1696,10 +1774,10 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
                 leading: const Icon(Icons.video_library_outlined),
                 title: Text(
                   track?.isVideoOnly == true
-                      ? '替换视频文件'
+                      ? context.tr('替换视频文件')
                       : track?.hasVideo == true
-                      ? '更换关联 MV'
-                      : '关联一个 MV',
+                      ? context.tr('更换关联 MV')
+                      : context.tr('关联一个 MV'),
                 ),
                 onTap: track == null
                     ? null
@@ -1711,7 +1789,7 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
               if (track?.hasVideo == true && track?.isVideoOnly != true)
                 ListTile(
                   leading: const Icon(Icons.link_off_rounded),
-                  title: const Text('解除 MV 配对'),
+                  title: Text(context.tr('解除 MV 配对')),
                   onTap: () async {
                     Navigator.pop(sheetContext);
                     await ref
@@ -1722,8 +1800,8 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
                 ),
               ListTile(
                 leading: const Icon(Icons.tune_rounded),
-                title: const Text('播放器设置'),
-                subtitle: const Text('睡眠定时、后台播放状态'),
+                title: Text(context.tr('播放器设置')),
+                subtitle: Text(context.tr('睡眠定时、后台播放状态')),
                 onTap: () {
                   Navigator.pop(sheetContext);
                   _showPlayerSettings();
@@ -1748,9 +1826,12 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                '播放器设置',
-                style: TextStyle(fontSize: 21, fontWeight: FontWeight.w800),
+              Text(
+                context.tr('播放器设置'),
+                style: const TextStyle(
+                  fontSize: 21,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
               const SizedBox(height: 8),
               Consumer(
@@ -1760,8 +1841,13 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
                       .sleepTimerRemaining;
                   return Text(
                     remaining == null
-                        ? '睡眠定时会在时间到后暂停当前播放。'
-                        : '将在 ${formatDuration(remaining)} 后暂停播放。',
+                        ? context.tr('睡眠定时会在时间到后暂停当前播放。')
+                        : context
+                              .tr('将在 {duration} 后暂停播放。')
+                              .replaceAll(
+                                '{duration}',
+                                formatDuration(remaining),
+                              ),
                     style: const TextStyle(color: Color(0xFF6C788B)),
                   );
                 },
@@ -1776,27 +1862,33 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
                       onPressed: () {
                         player.setSleepTimer(Duration(minutes: minutes));
                       },
-                      child: Text('$minutes 分钟'),
+                      child: Text(
+                        context
+                            .tr('{minutes} 分钟')
+                            .replaceAll('{minutes}', '$minutes'),
+                      ),
                     ),
                   OutlinedButton.icon(
                     onPressed: () => _showCustomSleepTimer(player),
                     icon: const Icon(Icons.edit_outlined, size: 18),
-                    label: const Text('自定义'),
+                    label: Text(context.tr('自定义')),
                   ),
                   TextButton(
                     onPressed: () {
                       player.setSleepTimer(null);
                     },
-                    child: const Text('关闭定时'),
+                    child: Text(context.tr('关闭定时')),
                   ),
                 ],
               ),
               const SizedBox(height: 18),
-              const ListTile(
+              ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: Icon(Icons.notifications_active_outlined),
-                title: Text('后台播放与系统通知'),
-                subtitle: Text('Android 已接入系统媒体服务：支持后台播放、通知栏、耳机与锁屏控制。'),
+                leading: const Icon(Icons.notifications_active_outlined),
+                title: Text(context.tr('后台播放与系统通知')),
+                subtitle: Text(
+                  context.tr('Android 已接入系统媒体服务：支持后台播放、通知栏、耳机与锁屏控制。'),
+                ),
               ),
             ],
           ),
@@ -1812,16 +1904,16 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('自定义定时'),
+          title: Text(context.tr('自定义定时')),
           content: TextField(
             controller: minutesController,
             autofocus: true,
             keyboardType: TextInputType.number,
             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
             decoration: InputDecoration(
-              labelText: '暂停前播放时长（分钟）',
-              hintText: '例如 90',
-              helperText: '可设 1–720 分钟',
+              labelText: context.tr('暂停前播放时长（分钟）'),
+              hintText: context.tr('例如 90'),
+              helperText: context.tr('可设 1–720 分钟'),
               errorText: validationMessage,
             ),
             onSubmitted: (_) {
@@ -1830,7 +1922,7 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
                 Navigator.pop(dialogContext, value);
               } else {
                 setDialogState(() {
-                  validationMessage = '请输入 1 到 720 之间的分钟数';
+                  validationMessage = context.tr('请输入 1 到 720 之间的分钟数');
                 });
               }
             },
@@ -1838,7 +1930,7 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('取消'),
+              child: Text(context.tr('取消')),
             ),
             FilledButton(
               onPressed: () {
@@ -1848,10 +1940,10 @@ class _NowPlayingPageState extends ConsumerState<NowPlayingPage>
                   return;
                 }
                 setDialogState(() {
-                  validationMessage = '请输入 1 到 720 之间的分钟数';
+                  validationMessage = context.tr('请输入 1 到 720 之间的分钟数');
                 });
               },
-              child: const Text('开始定时'),
+              child: Text(context.tr('开始定时')),
             ),
           ],
         ),
@@ -1984,12 +2076,12 @@ class _PlayerWindowControls extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           _PlayerWindowControlButton(
-            tooltip: '最小化',
+            tooltip: context.tr('最小化'),
             icon: Icons.remove_rounded,
             onPressed: () => windowManager.minimize(),
           ),
           _PlayerWindowControlButton(
-            tooltip: '最大化或还原',
+            tooltip: context.tr('最大化或还原'),
             icon: Icons.crop_square_rounded,
             onPressed: () async {
               if (await windowManager.isMaximized()) {
@@ -2000,7 +2092,7 @@ class _PlayerWindowControls extends StatelessWidget {
             },
           ),
           _PlayerWindowControlButton(
-            tooltip: '关闭',
+            tooltip: context.tr('关闭'),
             icon: Icons.close_rounded,
             onPressed: () => windowManager.close(),
           ),
@@ -2199,7 +2291,7 @@ class _DesktopMvControlBar extends ConsumerWidget {
                             const SizedBox(height: 3),
                             Text(
                               track == null
-                                  ? '从曲库中选择一首歌曲'
+                                  ? context.tr('从曲库中选择一首歌')
                                   : '${context.metadata(track!.artist)}  ·  ${context.metadata(track!.album)}',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -2221,7 +2313,7 @@ class _DesktopMvControlBar extends ConsumerWidget {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       IconButton(
-                        tooltip: '上一首',
+                        tooltip: context.tr('上一首'),
                         onPressed: track == null ? null : player.previous,
                         color: Colors.white,
                         icon: const Icon(Icons.skip_previous_rounded),
@@ -2238,7 +2330,7 @@ class _DesktopMvControlBar extends ConsumerWidget {
                       ),
                       const SizedBox(width: 6),
                       IconButton(
-                        tooltip: '下一首',
+                        tooltip: context.tr('下一首'),
                         onPressed: track == null ? null : player.next,
                         color: Colors.white,
                         icon: const Icon(Icons.skip_next_rounded),
@@ -2263,7 +2355,7 @@ class _DesktopMvControlBar extends ConsumerWidget {
                         )
                       else
                         IconButton(
-                          tooltip: '切换到唱片播放',
+                          tooltip: context.tr('切换到唱片播放'),
                           onPressed: track != null && !track!.isVideoOnly
                               ? () => onModeChanged(PlayerVisualMode.vinyl)
                               : null,
@@ -2279,7 +2371,7 @@ class _DesktopMvControlBar extends ConsumerWidget {
                         iconSize: 31,
                       ),
                       IconButton(
-                        tooltip: '播放队列',
+                        tooltip: context.tr('播放队列'),
                         onPressed: track == null
                             ? null
                             : () => PlayerInformation.showQueue(context, ref),
@@ -2293,7 +2385,9 @@ class _DesktopMvControlBar extends ConsumerWidget {
                         accent: accent,
                       ),
                       IconButton(
-                        tooltip: track?.isFavorite == true ? '取消收藏' : '收藏',
+                        tooltip: context.tr(
+                          track?.isFavorite == true ? '取消收藏' : '收藏',
+                        ),
                         onPressed: track == null
                             ? null
                             : () => library.toggleFavorite(track!),
@@ -2397,7 +2491,7 @@ class PlayerInformation extends ConsumerWidget {
               ),
               const SizedBox(width: 8),
               IconButton(
-                tooltip: track?.isFavorite == true ? '取消收藏' : '收藏',
+                tooltip: context.tr(track?.isFavorite == true ? '取消收藏' : '收藏'),
                 onPressed: track == null
                     ? null
                     : () => library.toggleFavorite(track!),
@@ -2480,7 +2574,7 @@ class PlayerInformation extends ConsumerWidget {
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               IconButton(
-                tooltip: track?.isFavorite == true ? '取消收藏' : '收藏',
+                tooltip: context.tr(track?.isFavorite == true ? '取消收藏' : '收藏'),
                 onPressed: track == null
                     ? null
                     : () => library.toggleFavorite(track!),
@@ -2538,7 +2632,7 @@ class PlayerInformation extends ConsumerWidget {
                 icon: const Icon(Icons.skip_next_rounded),
               ),
               IconButton(
-                tooltip: '播放队列',
+                tooltip: context.tr('播放队列'),
                 onPressed: track == null
                     ? null
                     : () => PlayerInformation.showQueue(context, ref),
@@ -2572,7 +2666,7 @@ class PlayerInformation extends ConsumerWidget {
       await showGeneralDialog<void>(
         context: context,
         barrierDismissible: true,
-        barrierLabel: '关闭播放队列',
+        barrierLabel: context.tr('关闭播放队列'),
         barrierColor: Colors.black.withValues(alpha: 0.10),
         transitionDuration: const Duration(milliseconds: 220),
         pageBuilder: (dialogContext, _, _) => Align(
@@ -2603,16 +2697,28 @@ class PlayerInformation extends ConsumerWidget {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      const Text(
-                                        '播放队列',
-                                        style: TextStyle(
+                                      Text(
+                                        context.tr('播放队列'),
+                                        style: const TextStyle(
                                           fontSize: 20,
                                           fontWeight: FontWeight.w800,
                                         ),
                                       ),
                                       const SizedBox(height: 3),
                                       Text(
-                                        '${playback.queueSource} · ${tracks.length} 首',
+                                        context
+                                            .tr('{source} · {count} 首')
+                                            .replaceAll(
+                                              '{source}',
+                                              context.trArgs(
+                                                playback.queueSource,
+                                                playback.queueSourceArgs,
+                                              ),
+                                            )
+                                            .replaceAll(
+                                              '{count}',
+                                              '${tracks.length}',
+                                            ),
                                         style: const TextStyle(
                                           color: AppColors.textSecondary,
                                         ),
@@ -2621,7 +2727,7 @@ class PlayerInformation extends ConsumerWidget {
                                   ),
                                 ),
                                 IconButton(
-                                  tooltip: '关闭',
+                                  tooltip: context.tr('关闭'),
                                   onPressed: () => Navigator.pop(dialogContext),
                                   icon: const Icon(Icons.close_rounded),
                                 ),
@@ -2650,6 +2756,7 @@ class PlayerInformation extends ConsumerWidget {
                                         item,
                                         tracks,
                                         source: playback.queueSource,
+                                        sourceArgs: playback.queueSourceArgs,
                                       );
                                       if (dialogContext.mounted) {
                                         Navigator.pop(dialogContext);
@@ -2765,16 +2872,25 @@ class PlayerInformation extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      '播放队列',
-                      style: TextStyle(
+                    Text(
+                      context.tr('播放队列'),
+                      style: const TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      '来自：${playback.queueSource} · ${tracks.length} 首',
+                      context
+                          .tr('来自：{source} · {count} 首')
+                          .replaceAll(
+                            '{source}',
+                            context.trArgs(
+                              playback.queueSource,
+                              playback.queueSourceArgs,
+                            ),
+                          )
+                          .replaceAll('{count}', '${tracks.length}'),
                       style: const TextStyle(color: Color(0xFF7D8799)),
                     ),
                   ],
@@ -2810,6 +2926,7 @@ class PlayerInformation extends ConsumerWidget {
                               item,
                               tracks,
                               source: playback.queueSource,
+                              sourceArgs: playback.queueSourceArgs,
                             );
                         if (sheetContext.mounted) Navigator.pop(sheetContext);
                       },
@@ -3164,13 +3281,13 @@ class _ModeSwitch extends StatelessWidget {
           _ModePill(
             selected: mode == PlayerVisualMode.vinyl,
             icon: Icons.album_rounded,
-            label: '唱片',
+            label: context.tr('唱片'),
             onTap: () => onChanged(PlayerVisualMode.vinyl),
           ),
         _ModePill(
           selected: mode == PlayerVisualMode.musicVideo,
           icon: Icons.ondemand_video_rounded,
-          label: hasAudio ? (hasVideo ? 'MV · 已配对' : '关联 MV') : 'MV',
+          label: hasAudio ? context.tr(hasVideo ? 'MV · 已配对' : '关联 MV') : 'MV',
           onTap: () => onChanged(PlayerVisualMode.musicVideo),
         ),
       ],
@@ -3255,7 +3372,7 @@ class _MvStage extends ConsumerWidget {
     if (track?.hasVideo != true && track?.isVideoOnly != true) {
       return _MissingMediaStage(
         icon: Icons.ondemand_video_rounded,
-        label: '还没有配对 MV',
+        label: context.tr('还没有配对 MV'),
         onTap: onAttachVideo,
       );
     }
@@ -3338,7 +3455,7 @@ class _MvStage extends ConsumerWidget {
                         ),
                       const SizedBox(height: 12),
                       Text(
-                        videoStatus,
+                        context.tr(videoStatus),
                         style: Theme.of(context).textTheme.labelLarge?.copyWith(
                           color: Colors.white.withValues(alpha: 0.88),
                         ),

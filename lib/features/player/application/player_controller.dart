@@ -3,14 +3,21 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:audio_service/audio_service.dart' as system_audio;
+import 'package:audio_session/audio_session.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart' hide Track;
 
-import '../../../core/utils/latest_request_gate.dart';
 import '../../library/domain/track.dart';
 import '../../library/application/library_controller.dart';
 import 'sona_audio_handler.dart';
+import 'notification_permission_service.dart';
 import 'video_playback_request.dart';
+import '../domain/playback_mode.dart';
+import '../domain/media_transport_coordinator.dart';
+import '../domain/playback_queue_policy.dart';
+import '../domain/audio_interruption_policy.dart';
+
+export '../domain/playback_mode.dart';
 
 final playerControllerProvider =
     StateNotifierProvider<PlayerController, PlaybackState>((ref) {
@@ -26,13 +33,14 @@ final playerControllerProvider =
               listenedDuration: listened,
               mediaDuration: duration,
             ),
-        onVideoTrackRequested: (track, queue, source) {
+        onVideoTrackRequested: (track, queue, source, sourceArgs) {
           ref
               .read(videoPlaybackRequestProvider.notifier)
               .state = VideoPlaybackRequest(
             track: track,
             queue: List<Track>.unmodifiable(queue),
             source: source,
+            sourceArgs: Map<String, String>.unmodifiable(sourceArgs),
           );
         },
       );
@@ -72,8 +80,6 @@ final playerControllerProvider =
       return controller;
     });
 
-enum VaultPlaybackMode { loop, one, shuffle }
-
 class PlaybackState {
   const PlaybackState({
     this.currentTrack,
@@ -82,8 +88,10 @@ class PlaybackState {
     this.duration = Duration.zero,
     this.volume = 80,
     this.playbackMode = VaultPlaybackMode.loop,
-    this.queueSource = '本地曲库',
+    this.queueSource = 'queue_source_local_library',
+    this.queueSourceArgs = const {},
     this.errorMessage = '',
+    this.errorMessageArgs = const {},
     this.sleepTimerRemaining,
   });
 
@@ -93,8 +101,12 @@ class PlaybackState {
   final Duration duration;
   final double volume;
   final VaultPlaybackMode playbackMode;
+
+  /// Locale-neutral localization key for the active queue origin.
   final String queueSource;
+  final Map<String, String> queueSourceArgs;
   final String errorMessage;
+  final Map<String, String> errorMessageArgs;
   final Duration? sleepTimerRemaining;
 
   PlaybackState copyWith({
@@ -105,7 +117,9 @@ class PlaybackState {
     double? volume,
     VaultPlaybackMode? playbackMode,
     String? queueSource,
+    Map<String, String>? queueSourceArgs,
     String? errorMessage,
+    Map<String, String>? errorMessageArgs,
     Duration? sleepTimerRemaining,
     bool clearCurrentTrack = false,
     bool clearSleepTimer = false,
@@ -120,7 +134,13 @@ class PlaybackState {
       volume: volume ?? this.volume,
       playbackMode: playbackMode ?? this.playbackMode,
       queueSource: queueSource ?? this.queueSource,
+      queueSourceArgs:
+          queueSourceArgs ??
+          (queueSource != null ? const {} : this.queueSourceArgs),
       errorMessage: errorMessage ?? this.errorMessage,
+      errorMessageArgs:
+          errorMessageArgs ??
+          (errorMessage != null ? const {} : this.errorMessageArgs),
       sleepTimerRemaining: clearSleepTimer
           ? null
           : (sleepTimerRemaining ?? this.sleepTimerRemaining),
@@ -165,22 +185,24 @@ class PlayerController extends StateNotifier<PlaybackState> {
     _subscriptions.add(
       _player.stream.completed.listen((completed) {
         if (completed && state.currentTrack != null) {
-          unawaited(_playAfterCompletion());
+          _queueCompletion();
         }
       }),
     );
     _subscriptions.add(
       _player.stream.error.listen(
-        (error) => state = state.copyWith(errorMessage: error),
+        (error) => state = state.copyWith(errorMessage: 'player_error_engine'),
       ),
     );
     unawaited(_player.setVolume(state.volume));
+    if (Platform.isAndroid) unawaited(_initializeAudioSession());
   }
 
   final Player _player;
   final Future<void> Function(Track) _onTrackSelected;
   final Future<void> Function(Track, Duration, Duration) _onValidPlay;
-  final void Function(Track, List<Track>, String) _onVideoTrackRequested;
+  final void Function(Track, List<Track>, String, Map<String, String>)
+  _onVideoTrackRequested;
   final List<StreamSubscription<dynamic>> _subscriptions = [];
   List<Track> _queue = const [];
   double _volumeBeforeMute = 80;
@@ -194,16 +216,20 @@ class PlayerController extends StateNotifier<PlaybackState> {
   var _handlingCompletion = false;
   Duration? _pendingSeekPosition;
   DateTime? _pendingSeekRequestedAt;
-  final _sourceRequests = LatestRequestGate();
-  // media_kit's native open calls are not safe to overlap. A quick sequence
-  // of next/previous taps therefore queues native work, while request ids make
-  // every stale queued operation a no-op.
-  Future<void> _nativeOpenTail = Future<void>.value();
+  // Every command which may replace or unload the native source uses this one
+  // lane. Explicit selections invalidate older opens immediately; the lane
+  // then disposes a stale native result before the next command can start.
+  final _transport = MediaTransportCoordinator();
   // The Player is shared by the mini player and the full-screen player. Keep
   // the file it already has open so presenting a new video texture never
   // mistakes a UI transition for a request to restart the media.
   String? _activeSourcePath;
-
+  AudioSession? _audioSession;
+  StreamSubscription<AudioInterruptionEvent>? _interruptionSubscription;
+  StreamSubscription<void>? _becomingNoisySubscription;
+  bool _resumeAfterInterruption = false;
+  bool _duckedBySystem = false;
+  double? _volumeBeforeSystemDuck;
   Player get player => _player;
 
   List<Track> get queue => List.unmodifiable(_queue);
@@ -214,53 +240,121 @@ class PlayerController extends StateNotifier<PlaybackState> {
   /// Updating the queue here keeps the mini player and queue sheet in sync
   /// with the list the user just clicked, instead of briefly exposing the
   /// previous MV queue while that surface is being prepared.
-  void selectQueue(Track track, List<Track> queue, {String source = '本地曲库'}) {
+  void selectQueue(
+    Track track,
+    List<Track> queue, {
+    String source = 'queue_source_local_library',
+    Map<String, String> sourceArgs = const {},
+  }) {
     // Cancel an earlier deferred open. The following playTrack call creates
     // its own request after the video surface is ready.
-    _sourceRequests.begin();
+    _transport.beginSourceRequest();
     _replaceQueue(track, queue);
-    state = state.copyWith(queueSource: source, errorMessage: '');
+    state = state.copyWith(
+      queueSource: source,
+      queueSourceArgs: sourceArgs,
+      errorMessage: '',
+    );
   }
 
   Future<void> playTrack(
     Track track,
     List<Track> queue, {
-    String source = '本地曲库',
+    String source = 'queue_source_local_library',
+    Map<String, String> sourceArgs = const {},
     bool videoSurfaceReady = false,
-  }) async {
+  }) {
+    // Android 13+ hides media notifications until the user grants this. The
+    // request is intentionally tied to an explicit playback gesture and never
+    // blocks local playback when permission is denied.
+    unawaited(requestPlaybackNotificationPermissionIfNeeded());
     if (track.isVideoOnly && !videoSurfaceReady) {
-      selectQueue(track, queue, source: source);
-      _onVideoTrackRequested(track, _queue, source);
-      return;
+      selectQueue(track, queue, source: source, sourceArgs: sourceArgs);
+      _onVideoTrackRequested(track, _queue, source, sourceArgs);
+      return Future<void>.value();
     }
     final previousState = state;
-    final request = _sourceRequests.begin();
+    final request = _transport.beginSourceRequest();
+    // Reflect an explicit selection immediately. Besides making the UI feel
+    // direct, this lets a concurrent library refresh reconcile the selected
+    // row instead of mistaking the previously playing row for the target.
     _replaceQueue(track, queue);
     state = state.copyWith(
       currentTrack: track,
       position: Duration.zero,
       duration: track.duration,
       queueSource: source,
+      queueSourceArgs: sourceArgs,
       errorMessage: '',
     );
+    return _enqueueTransport(
+      () =>
+          _playTrackNow(track, previousState: previousState, request: request),
+    );
+  }
+
+  Future<void> _playTrackNow(
+    Track track, {
+    required PlaybackState previousState,
+    required int request,
+  }) async {
+    if (!_transport.isCurrentSourceRequest(request)) return;
     final opened = await _openSingleTrack(track, play: true, request: request);
-    if (!_sourceRequests.isCurrent(request)) return;
+    if (!_transport.isCurrentSourceRequest(request)) return;
     if (!opened) {
       state = previousState.copyWith(
-        errorMessage: '无法打开“${track.title}”。已保留上一首歌曲。',
+        errorMessage: 'player_error_open_track_preserved_previous',
+        errorMessageArgs: {'title': track.title},
       );
       return;
     }
     _startListeningSession(track, force: true);
     await _onTrackSelected(track);
+    if (!_transport.isCurrentSourceRequest(request)) return;
     await _applyPlaybackMode(state.playbackMode);
   }
 
-  Future<void> togglePlayPause() => _player.playOrPause();
-  Future<void> play() => _player.play();
-  Future<void> pause() => _player.pause();
-  Future<void> next() => _moveInQueue(forward: true);
-  Future<void> previous() => _moveInQueue(forward: false);
+  Future<void> togglePlayPause() {
+    if (!state.isPlaying) {
+      unawaited(requestPlaybackNotificationPermissionIfNeeded());
+    }
+    return _enqueueTransport(() async {
+      // Read media_kit's state only when this queued command starts. Rapid taps
+      // therefore alternate deterministically instead of all observing the same
+      // slightly delayed Riverpod state and issuing duplicate play commands.
+      if (_player.state.playing) {
+        await _pauseForUser();
+      } else {
+        await _playForUser();
+      }
+    });
+  }
+
+  Future<void> play() => _enqueueTransport(_playForUser);
+
+  Future<void> pause() => _enqueueTransport(_pauseForUser);
+
+  Future<void> _playForUser() async {
+    _resumeAfterInterruption = false;
+    if (!await _activateAudioSession()) {
+      state = state.copyWith(errorMessage: 'player_error_audio_focus_denied');
+      return;
+    }
+    await _player.play();
+  }
+
+  Future<void> _pauseForUser() async {
+    _resumeAfterInterruption = false;
+    await _player.pause();
+  }
+
+  Future<void> _enqueueTransport(Future<void> Function() operation) {
+    return _transport.run(operation);
+  }
+
+  Future<void> next() => _enqueueTransport(() => _moveInQueue(forward: true));
+  Future<void> previous() =>
+      _enqueueTransport(() => _moveInQueue(forward: false));
   Future<void> seek(Duration position) async {
     final duration = state.duration;
     // Seeking a stream whose duration is not known yet is undefined in the
@@ -316,20 +410,33 @@ class PlayerController extends StateNotifier<PlaybackState> {
     });
   }
 
-  Future<void> switchTrackSource(Track track, String sourcePath) async {
+  Future<void> switchTrackSource(Track track, String sourcePath) {
+    final request = _transport.beginSourceRequest();
+    return _enqueueTransport(
+      () => _switchTrackSourceNow(track, sourcePath, request: request),
+    );
+  }
+
+  Future<void> _switchTrackSourceNow(
+    Track track,
+    String sourcePath, {
+    required int request,
+  }) async {
+    if (!_transport.isCurrentSourceRequest(request)) return;
     if (!await File(sourcePath).exists()) {
       state = state.copyWith(
-        errorMessage: '找不到“${track.title}”的本地文件。它可能被移动或删除。',
+        errorMessage: 'player_error_local_file_missing',
+        errorMessageArgs: {'title': track.title},
       );
       return;
     }
+    if (!_transport.isCurrentSourceRequest(request)) return;
     if (_isActiveSource(track, sourcePath)) {
       _replaceTrackInQueue(track);
       state = state.copyWith(currentTrack: track, errorMessage: '');
       return;
     }
     final previousState = state;
-    final request = _sourceRequests.begin();
     final position = state.position;
     final wasPlaying = state.isPlaying;
     if (_queue.isEmpty) _queue = [track];
@@ -350,15 +457,16 @@ class PlayerController extends StateNotifier<PlaybackState> {
       play: false,
       request: request,
     );
-    if (!_sourceRequests.isCurrent(request)) return;
+    if (!_transport.isCurrentSourceRequest(request)) return;
     if (!opened) {
       state = previousState.copyWith(
-        errorMessage: '无法打开“${track.title}”的本地文件。',
+        errorMessage: 'player_error_open_local_file',
+        errorMessageArgs: {'title': track.title},
       );
       return;
     }
     if (position > Duration.zero) await _player.seek(position);
-    if (!_sourceRequests.isCurrent(request)) return;
+    if (!_transport.isCurrentSourceRequest(request)) return;
     if (wasPlaying) await _player.play();
   }
 
@@ -381,13 +489,16 @@ class PlayerController extends StateNotifier<PlaybackState> {
     required bool play,
     int? request,
   }) async {
-    Future<bool> open() async {
-      if (request != null && !_sourceRequests.isCurrent(request)) return false;
-      final mediaPath = path ?? track.path;
-      if (!await File(mediaPath).exists()) return false;
-      if (request != null && !_sourceRequests.isCurrent(request)) return false;
-      try {
-        await _player.open(
+    final mediaPath = path ?? track.path;
+    final sourceRequest = request ?? _transport.beginSourceRequest();
+    if (!_transport.isCurrentSourceRequest(sourceRequest)) return false;
+    if (play && !await _activateAudioSession()) return false;
+    if (!await File(mediaPath).exists()) return false;
+    if (!_transport.isCurrentSourceRequest(sourceRequest)) return false;
+    try {
+      return await _transport.openLatest(
+        request: sourceRequest,
+        open: () => _player.open(
           Media(
             mediaPath,
             extras: {
@@ -397,22 +508,24 @@ class PlayerController extends StateNotifier<PlaybackState> {
             },
           ),
           play: play,
-        );
-      } catch (_) {
-        return false;
-      }
-      if (request != null && !_sourceRequests.isCurrent(request)) return false;
-      _activeSourcePath = mediaPath;
-      unawaited(_hydrateDuration(track));
-      return true;
+        ),
+        discardStale: _discardStaleNativeSource,
+        commit: () {
+          _activeSourcePath = mediaPath;
+          unawaited(_hydrateDuration(track));
+        },
+      );
+    } catch (_) {
+      return false;
     }
+  }
 
-    final scheduled = _nativeOpenTail.then(
-      (_) => open(),
-      onError: (_) => open(),
-    );
-    _nativeOpenTail = scheduled.then<void>((_) {}, onError: (_) {});
-    return scheduled;
+  Future<void> _discardStaleNativeSource() async {
+    try {
+      await _player.stop();
+    } finally {
+      _activeSourcePath = null;
+    }
   }
 
   bool _isActiveSource(Track track, String sourcePath) {
@@ -439,10 +552,7 @@ class PlayerController extends StateNotifier<PlaybackState> {
   }
 
   void _replaceQueue(Track track, List<Track> queue) {
-    _queue = queue.isEmpty ? [track] : List<Track>.from(queue);
-    if (_queue.every((item) => item.id != track.id)) {
-      _queue.insert(0, track);
-    }
+    _queue = normalizedPlaybackQueue(track, queue);
   }
 
   Future<void> _hydrateDuration(Track track) async {
@@ -473,7 +583,7 @@ class PlayerController extends StateNotifier<PlaybackState> {
     final nextIndex = _nextQueueIndex(safeIndex, forward: forward);
     final nextTrack = _queue[nextIndex];
     final previousState = state;
-    final request = _sourceRequests.begin();
+    final request = _transport.beginSourceRequest();
     state = state.copyWith(
       currentTrack: nextTrack,
       position: Duration.zero,
@@ -485,10 +595,11 @@ class PlayerController extends StateNotifier<PlaybackState> {
       play: true,
       request: request,
     );
-    if (!_sourceRequests.isCurrent(request)) return;
+    if (!_transport.isCurrentSourceRequest(request)) return;
     if (!opened) {
       state = previousState.copyWith(
-        errorMessage: '下一首“${nextTrack.title}”暂时无法打开，已保留当前歌曲。',
+        errorMessage: 'player_error_open_next_preserved_current',
+        errorMessageArgs: {'title': nextTrack.title},
       );
       return;
     }
@@ -497,25 +608,33 @@ class PlayerController extends StateNotifier<PlaybackState> {
   }
 
   int _nextQueueIndex(int currentIndex, {required bool forward}) {
-    if (_queue.length == 1 || state.playbackMode == VaultPlaybackMode.one) {
-      return currentIndex;
-    }
-    if (state.playbackMode == VaultPlaybackMode.shuffle && forward) {
-      final offset = Random().nextInt(_queue.length - 1) + 1;
-      return (currentIndex + offset) % _queue.length;
-    }
-    final delta = forward ? 1 : -1;
-    return (currentIndex + delta + _queue.length) % _queue.length;
+    final shuffleOffset =
+        state.playbackMode == VaultPlaybackMode.shuffle &&
+            forward &&
+            _queue.length > 1
+        ? Random().nextInt(_queue.length - 1) + 1
+        : null;
+    return nextPlaybackQueueIndex(
+      length: _queue.length,
+      currentIndex: currentIndex,
+      forward: forward,
+      mode: state.playbackMode,
+      shuffleOffset: shuffleOffset,
+    );
   }
 
-  Future<void> _playAfterCompletion() async {
+  void _queueCompletion() {
     if (_handlingCompletion) return;
     _handlingCompletion = true;
-    try {
-      await _moveInQueue(forward: true);
-    } finally {
-      _handlingCompletion = false;
-    }
+    unawaited(
+      _enqueueTransport(() async {
+        try {
+          await _moveInQueue(forward: true);
+        } finally {
+          _handlingCompletion = false;
+        }
+      }),
+    );
   }
 
   void _startListeningSession(Track track, {bool force = false}) {
@@ -528,21 +647,65 @@ class PlayerController extends StateNotifier<PlaybackState> {
     _pendingSeekRequestedAt = null;
   }
 
-  Future<void> reconcileLibraryTracks(Iterable<Track> libraryTracks) async {
-    final availableById = <int, Track>{
-      for (final track in libraryTracks)
-        if (track.id != null) track.id!: track,
-    };
-    _queue = _queue
-        .map((track) => track.id == null ? track : availableById[track.id])
-        .whereType<Track>()
-        .toList(growable: false);
-
+  Future<void> reconcileLibraryTracks(Iterable<Track> libraryTracks) {
+    final snapshot = List<Track>.unmodifiable(libraryTracks);
     final current = state.currentTrack;
+    final preview = reconcilePlaybackQueue(
+      current: current,
+      queue: _queue,
+      available: snapshot,
+    );
+    final willClearCurrent =
+        current != null && current.id != null && preview.current == null;
+    final willDetachActiveVideo =
+        current?.hasVideo == true &&
+        preview.current?.hasVideo == false &&
+        current!.videoPath != null &&
+        _isActiveSource(current, current.videoPath!);
+    final request = willClearCurrent || willDetachActiveVideo
+        ? _transport.beginSourceRequest()
+        : null;
+    return _enqueueTransport(
+      () => _reconcileLibraryTracksNow(snapshot, request: request),
+    );
+  }
+
+  Future<void> _reconcileLibraryTracksNow(
+    Iterable<Track> libraryTracks, {
+    required int? request,
+  }) async {
+    if (request != null && !_transport.isCurrentSourceRequest(request)) return;
+    final current = state.currentTrack;
+    final reconciled = reconcilePlaybackQueue(
+      current: current,
+      queue: _queue,
+      available: libraryTracks,
+    );
+    _queue = reconciled.queue;
     if (current == null || current.id == null) return;
-    final updated = availableById[current.id];
+    final updated = reconciled.current;
     if (updated == null) {
-      await _clearCurrentTrack('当前歌曲已从本地曲库移除。');
+      final clearRequest = request ?? _transport.beginSourceRequest();
+      await _clearCurrentTrack(
+        'player_error_current_removed_from_library',
+        request: clearRequest,
+      );
+      return;
+    }
+    final detachedActiveVideo =
+        current.hasVideo &&
+        !updated.hasVideo &&
+        _isActiveSource(current, current.videoPath!);
+    if (detachedActiveVideo) {
+      // A deleted paired MV must not leave the native player bound to a file
+      // that no longer belongs to the refreshed track. Preserve position and
+      // playback state while returning to the audio source.
+      final switchRequest = request ?? _transport.beginSourceRequest();
+      await _switchTrackSourceNow(
+        updated,
+        updated.path,
+        request: switchRequest,
+      );
       return;
     }
     if (!identical(current, updated)) {
@@ -550,8 +713,11 @@ class PlayerController extends StateNotifier<PlaybackState> {
     }
   }
 
-  Future<void> _clearCurrentTrack(String message) async {
-    _sourceRequests.begin();
+  Future<void> _clearCurrentTrack(
+    String message, {
+    required int request,
+  }) async {
+    if (!_transport.isCurrentSourceRequest(request)) return;
     _sessionTrackId = null;
     _lastObservedPosition = null;
     _heardSeconds.clear();
@@ -560,6 +726,7 @@ class PlayerController extends StateNotifier<PlaybackState> {
     _pendingSeekRequestedAt = null;
     _activeSourcePath = null;
     await _player.stop();
+    await _audioSession?.setActive(false);
     state = state.copyWith(
       clearCurrentTrack: true,
       isPlaying: false,
@@ -616,6 +783,127 @@ class PlayerController extends StateNotifier<PlaybackState> {
     );
   }
 
+  Future<void> _initializeAudioSession() async {
+    try {
+      final session = await AudioSession.instance;
+      if (!mounted) return;
+      _audioSession = session;
+      await _interruptionSubscription?.cancel();
+      await _becomingNoisySubscription?.cancel();
+      _interruptionSubscription = session.interruptionEventStream.listen(
+        _handleAudioInterruption,
+      );
+      _becomingNoisySubscription = session.becomingNoisyEventStream.listen((_) {
+        // Unplugging wired/Bluetooth headphones must never continue through
+        // the phone speaker. A later reconnect remains an explicit user play.
+        _resumeAfterInterruption = false;
+        unawaited(_restoreSystemDuck());
+        if (interruptionBeginAction(
+              PlaybackInterruptionKind.becomingNoisy,
+              isPlaying: state.isPlaying,
+              isDucked: _duckedBySystem,
+            ) ==
+            PlaybackInterruptionAction.pause) {
+          unawaited(_player.pause());
+        }
+      });
+    } catch (_) {
+      // Playback remains available on hosts without an audio-session backend.
+    }
+  }
+
+  Future<bool> _activateAudioSession() async {
+    if (!Platform.isAndroid) return true;
+    var session = _audioSession;
+    if (session == null) {
+      try {
+        session = await AudioSession.instance;
+        _audioSession = session;
+      } catch (_) {
+        return true;
+      }
+    }
+    try {
+      return await session.setActive(true);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  void _handleAudioInterruption(AudioInterruptionEvent event) {
+    switch (event.type) {
+      case AudioInterruptionType.duck:
+        if (event.begin) {
+          final action = interruptionBeginAction(
+            PlaybackInterruptionKind.duck,
+            isPlaying: state.isPlaying,
+            isDucked: _duckedBySystem,
+          );
+          if (action != PlaybackInterruptionAction.duck) return;
+          _duckedBySystem = true;
+          _volumeBeforeSystemDuck = state.volume;
+          unawaited(
+            _player.setVolume((state.volume * 0.25).clamp(0, 100).toDouble()),
+          );
+        } else {
+          final action = interruptionEndAction(
+            PlaybackInterruptionKind.duck,
+            shouldResume: false,
+            isDucked: _duckedBySystem,
+          );
+          if (action == PlaybackInterruptionAction.restoreVolume) {
+            unawaited(_restoreSystemDuck());
+          }
+        }
+        return;
+      case AudioInterruptionType.pause:
+        if (event.begin) {
+          _resumeAfterInterruption = state.isPlaying;
+          final action = interruptionBeginAction(
+            PlaybackInterruptionKind.pause,
+            isPlaying: state.isPlaying,
+            isDucked: _duckedBySystem,
+          );
+          if (action == PlaybackInterruptionAction.pause) {
+            unawaited(_player.pause());
+          }
+        } else {
+          final action = interruptionEndAction(
+            PlaybackInterruptionKind.pause,
+            shouldResume: _resumeAfterInterruption,
+            isDucked: _duckedBySystem,
+          );
+          _resumeAfterInterruption = false;
+          if (action == PlaybackInterruptionAction.resume) unawaited(play());
+        }
+        return;
+      case AudioInterruptionType.unknown:
+        if (event.begin) {
+          // Unknown interruptions can be indefinite. Pause safely but never
+          // surprise the user by resuming after the source disappears.
+          _resumeAfterInterruption = false;
+          unawaited(_restoreSystemDuck());
+          if (interruptionBeginAction(
+                PlaybackInterruptionKind.unknown,
+                isPlaying: state.isPlaying,
+                isDucked: _duckedBySystem,
+              ) ==
+              PlaybackInterruptionAction.pause) {
+            unawaited(_player.pause());
+          }
+        }
+        return;
+    }
+  }
+
+  Future<void> _restoreSystemDuck() async {
+    if (!_duckedBySystem) return;
+    final volume = _volumeBeforeSystemDuck ?? state.volume;
+    _duckedBySystem = false;
+    _volumeBeforeSystemDuck = null;
+    await _player.setVolume(volume);
+  }
+
   @override
   void dispose() {
     _sleepTimer?.cancel();
@@ -623,6 +911,9 @@ class PlayerController extends StateNotifier<PlaybackState> {
     for (final subscription in _subscriptions) {
       unawaited(subscription.cancel());
     }
+    unawaited(_interruptionSubscription?.cancel());
+    unawaited(_becomingNoisySubscription?.cancel());
+    unawaited(_audioSession?.setActive(false));
     unawaited(_player.dispose());
     super.dispose();
   }

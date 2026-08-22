@@ -14,6 +14,7 @@ class Track {
     this.lastPlayedAt,
     this.videoPath,
     this.mediaType = 'audio',
+    this.artworkPath,
   });
 
   final int? id;
@@ -30,6 +31,7 @@ class Track {
   final DateTime? lastPlayedAt;
   final String? videoPath;
   final String mediaType;
+  final String? artworkPath;
 
   bool get hasVideo => videoPath != null && videoPath!.isNotEmpty;
   bool get isVideoOnly => mediaType.trim().toLowerCase() == 'video';
@@ -51,6 +53,8 @@ class Track {
     String? videoPath,
     bool clearVideoPath = false,
     String? mediaType,
+    String? artworkPath,
+    bool clearArtworkPath = false,
   }) {
     return Track(
       id: id ?? this.id,
@@ -69,6 +73,7 @@ class Track {
           : lastPlayedAt ?? this.lastPlayedAt,
       videoPath: clearVideoPath ? null : videoPath ?? this.videoPath,
       mediaType: mediaType ?? this.mediaType,
+      artworkPath: clearArtworkPath ? null : artworkPath ?? this.artworkPath,
     );
   }
 
@@ -87,6 +92,7 @@ class Track {
       'last_played_at': lastPlayedAt?.toIso8601String(),
       'video_path': videoPath,
       'media_type': mediaType,
+      'artwork_path': artworkPath,
     };
   }
 
@@ -108,6 +114,7 @@ class Track {
           : DateTime.parse(map['last_played_at']! as String),
       videoPath: map['video_path'] as String?,
       mediaType: map['media_type'] as String? ?? 'audio',
+      artworkPath: map['artwork_path'] as String?,
     );
   }
 }

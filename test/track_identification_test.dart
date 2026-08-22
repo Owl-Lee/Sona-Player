@@ -34,6 +34,21 @@ void main() {
       expect(parsed.usedFileNameFallback, isFalse);
     });
 
+    test('persists locale-independent fallback metadata', () {
+      final audio = TrackNameParser.parse(
+        fileName: 'untagged.mp3',
+        isVideo: false,
+      );
+      final video = TrackNameParser.parse(
+        fileName: 'IMG_5921.mp4',
+        isVideo: true,
+      );
+
+      expect(audio.artist, TrackNameParser.unknownArtist);
+      expect(video.artist, TrackNameParser.localVideoArtist);
+      expect(video.album, TrackNameParser.standaloneVideoAlbum);
+    });
+
     test('rejects raw Bilibili identifier as a reliable title', () {
       expect(
         TrackNameParser.isReliableTitle(

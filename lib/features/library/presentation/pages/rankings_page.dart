@@ -125,7 +125,7 @@ class _RankingsPageState extends ConsumerState<RankingsPage> {
                 children: [
                   if (mobile) ...[
                     IconButton(
-                      tooltip: '返回',
+                      tooltip: context.tr('返回'),
                       onPressed: () => Navigator.of(context).maybePop(),
                       icon: const Icon(Icons.arrow_back_rounded),
                     ),
@@ -133,7 +133,7 @@ class _RankingsPageState extends ConsumerState<RankingsPage> {
                   ],
                   Expanded(
                     child: Text(
-                      '听歌排行',
+                      context.tr('听歌排行'),
                       style: Theme.of(context).textTheme.headlineMedium,
                     ),
                   ),
@@ -143,18 +143,18 @@ class _RankingsPageState extends ConsumerState<RankingsPage> {
                       selected: {_period},
                       onSelectionChanged: (value) =>
                           setState(() => _period = value.first),
-                      segments: const [
+                      segments: [
                         ButtonSegment(
                           value: RankingPeriod.week,
-                          label: Text('近7天'),
+                          label: Text(context.tr('近7天')),
                         ),
                         ButtonSegment(
                           value: RankingPeriod.month,
-                          label: Text('本月'),
+                          label: Text(context.tr('本月')),
                         ),
                         ButtonSegment(
                           value: RankingPeriod.all,
-                          label: Text('总排行'),
+                          label: Text(context.tr('总排行')),
                         ),
                       ],
                     ),
@@ -167,8 +167,8 @@ class _RankingsPageState extends ConsumerState<RankingsPage> {
                   onChanged: (value) => setState(() => _period = value),
                 ),
                 const SizedBox(height: 10),
-                const Text(
-                  '播放满 70% 才记为一次；旧版本记录仅计入总排行。',
+                Text(
+                  context.tr('播放满 70% 才记为一次；旧版本记录仅计入总排行。'),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -178,8 +178,8 @@ class _RankingsPageState extends ConsumerState<RankingsPage> {
                 ),
               ] else ...[
                 const SizedBox(height: 6),
-                const Text(
-                  '播放满 70% 才记为一次；旧版本记录仅计入总排行。',
+                Text(
+                  context.tr('播放满 70% 才记为一次；旧版本记录仅计入总排行。'),
                   style: TextStyle(color: AppColors.textSecondary),
                 ),
               ],
@@ -211,18 +211,20 @@ class _RankingsPageState extends ConsumerState<RankingsPage> {
                       padding: const EdgeInsets.symmetric(vertical: 2),
                       child: Column(
                         children: [
-                          const Padding(
-                            padding: EdgeInsets.symmetric(
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
                               horizontal: 15,
                               vertical: 8,
                             ),
                             child: Row(
                               children: [
-                                SizedBox(width: 88, child: Text('#')),
-                                Expanded(child: Text('歌曲')),
+                                const SizedBox(width: 88, child: Text('#')),
+                                Expanded(child: Text(context.tr('歌曲'))),
                                 SizedBox(
                                   width: 96,
-                                  child: Center(child: Text('播放次数')),
+                                  child: Center(
+                                    child: Text(context.tr('播放次数')),
+                                  ),
                                 ),
                               ],
                             ),
@@ -354,7 +356,7 @@ class _RankingsPageState extends ConsumerState<RankingsPage> {
                                               ref,
                                               track,
                                               rankedTracks,
-                                              source: '听歌排行',
+                                              source: 'queue_source_rankings',
                                             ),
                                           ),
                                         ),
@@ -415,9 +417,9 @@ class _RankingCountBadge extends StatelessWidget {
               text: '$count',
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
             ),
-            const TextSpan(
-              text: ' 次',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+            TextSpan(
+              text: context.tr(' 次'),
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
             ),
           ],
         ),
@@ -434,10 +436,10 @@ class _MobileRankingFilters extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const items = [
-      (RankingPeriod.week, '近7天'),
-      (RankingPeriod.month, '本月'),
-      (RankingPeriod.all, '总排行'),
+    final items = [
+      (RankingPeriod.week, context.tr('近7天')),
+      (RankingPeriod.month, context.tr('本月')),
+      (RankingPeriod.all, context.tr('总排行')),
     ];
     return Container(
       height: 42,
@@ -498,19 +500,23 @@ class _RankingEmptyState extends StatelessWidget {
           borderRadius: BorderRadius.circular(22),
           border: Border.all(color: const Color(0xFFD8E7E1)),
         ),
-        child: const Column(
+        child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.bar_chart_rounded, size: 34, color: AppColors.accent),
-            SizedBox(height: 10),
+            const Icon(
+              Icons.bar_chart_rounded,
+              size: 34,
+              color: AppColors.accent,
+            ),
+            const SizedBox(height: 10),
             Text(
-              '这个时间段还没有播放记录',
+              context.tr('这个时间段还没有播放记录'),
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
             ),
-            SizedBox(height: 6),
+            const SizedBox(height: 6),
             Text(
-              '完整播放一首歌后，这里会自动生成排行。',
+              context.tr('完整播放一首歌后，这里会自动生成排行。'),
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
             ),

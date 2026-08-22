@@ -84,13 +84,16 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
         })
         .toList(growable: false);
     final queueSource = query.isNotEmpty
-        ? '搜索“${_query.trim()}”'
+        ? 'queue_source_search'
         : switch (filter) {
-            LibraryFilter.all => '本地曲库',
-            LibraryFilter.favorites => '我的收藏',
-            LibraryFilter.videos => '有 MV',
-            LibraryFilter.recent => '最近播放',
+            LibraryFilter.all => 'queue_source_local_library',
+            LibraryFilter.favorites => 'queue_source_favorites',
+            LibraryFilter.videos => 'queue_source_videos',
+            LibraryFilter.recent => 'queue_source_recent',
           };
+    final queueSourceArgs = query.isNotEmpty
+        ? <String, String>{'query': _query.trim()}
+        : const <String, String>{};
 
     final baseTheme = Theme.of(context);
     return Theme(
@@ -211,14 +214,15 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                           ? const Center(child: CircularProgressIndicator())
                           : state.tracks.isEmpty
                           ? _EmptyLibrary(
+                              accent: accent,
                               onImport: () =>
                                   importMusic(context, ref, directory: false),
                             )
                           : tracks.isEmpty
-                          ? const Center(
+                          ? Center(
                               child: Text(
-                                '没有找到符合条件的歌曲',
-                                style: TextStyle(
+                                context.tr('没有找到符合条件的歌曲'),
+                                style: const TextStyle(
                                   color: AppColors.textSecondary,
                                 ),
                               ),
@@ -233,6 +237,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                                 track,
                                 tracks,
                                 source: queueSource,
+                                sourceArgs: queueSourceArgs,
                               ),
                               onFavorite: _favorite,
                               onMore: (track, [position]) =>
@@ -259,6 +264,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                                 track,
                                 tracks,
                                 source: queueSource,
+                                sourceArgs: queueSourceArgs,
                               ),
                               onFavorite: _favorite,
                               onMore: (track, [position]) =>
@@ -315,7 +321,7 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
     final target = await showDialog<PlaylistInfo>(
       context: context,
       builder: (context) => SimpleDialog(
-        title: const Text('添加到哪个歌单？'),
+        title: Text(context.tr('添加到哪个歌单？')),
         children: playlists
             .map(
               (playlist) => SimpleDialogOption(
@@ -339,8 +345,13 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
         SnackBar(
           content: Text(
             skipped == 0
-                ? '已加入 ${target.name}'
-                : '已加入 $added 首，跳过 $skipped 首重复歌曲',
+                ? context
+                      .tr('已加入 {playlist}')
+                      .replaceAll('{playlist}', target.name)
+                : context
+                      .tr('已加入 {added} 首，跳过 {skipped} 首重复歌曲')
+                      .replaceAll('{added}', '$added')
+                      .replaceAll('{skipped}', '$skipped'),
           ),
         ),
       );
@@ -356,17 +367,21 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('从曲库移除所选歌曲？'),
-        content: Text('将移除 ${selectedTracks.length} 首歌曲的曲库记录，不会删除电脑上的原始文件。'),
+        title: Text(context.tr('从曲库移除所选歌曲？')),
+        content: Text(
+          context
+              .tr('将移除 {count} 首歌曲的曲库记录，不会删除电脑上的原始文件。')
+              .replaceAll('{count}', '${selectedTracks.length}'),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
+            child: Text(context.tr('取消')),
           ),
           FilledButton.icon(
             onPressed: () => Navigator.pop(context, true),
             icon: const Icon(Icons.delete_outline_rounded),
-            label: const Text('移除'),
+            label: Text(context.tr('移除')),
           ),
         ],
       ),
@@ -394,12 +409,12 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
               ListTile(
                 leading: TrackArtwork(track: track, size: 46, borderRadius: 12),
                 title: Text(
-                  track.title,
+                  context.metadata(track.title),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
                 subtitle: Text(
-                  track.artist,
+                  context.metadata(track.artist),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -407,12 +422,12 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
               const Divider(),
               ListTile(
                 leading: const Icon(Icons.playlist_add_rounded),
-                title: const Text('添加到歌单'),
+                title: Text(context.tr('添加到歌单')),
                 onTap: () => Navigator.pop(context, 'playlist'),
               ),
               ListTile(
                 leading: const Icon(Icons.remove_circle_outline_rounded),
-                title: const Text('从曲库移除'),
+                title: Text(context.tr('从曲库移除')),
                 onTap: () => Navigator.pop(context, 'remove'),
               ),
             ],
@@ -434,14 +449,14 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
       if (!mounted) return;
       showLatestSnackBar(
         context,
-        const SnackBar(content: Text('请先在“歌单”中新建一个歌单。')),
+        SnackBar(content: Text(context.tr('请先在“歌单”中新建一个歌单。'))),
       );
       return;
     }
     final selected = await showDialog<PlaylistInfo>(
       context: context,
       builder: (context) => SimpleDialog(
-        title: const Text('添加到歌单'),
+        title: Text(context.tr('添加到歌单')),
         children: playlists
             .map(
               (playlist) => SimpleDialogOption(
@@ -452,7 +467,11 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
                     color: AppColors.accent,
                   ),
                   title: Text(playlist.name),
-                  trailing: Text('${playlist.trackCount} 首'),
+                  trailing: Text(
+                    context
+                        .tr('{count} 首')
+                        .replaceAll('{count}', '${playlist.trackCount}'),
+                  ),
                 ),
               ),
             )
@@ -466,7 +485,15 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
     if (!mounted) return;
     showLatestSnackBar(
       context,
-      SnackBar(content: Text(added ? '已添加到“${selected.name}”' : '这首歌已经在该歌单中')),
+      SnackBar(
+        content: Text(
+          added
+              ? context
+                    .tr('已添加到“{playlist}”')
+                    .replaceAll('{playlist}', selected.name)
+              : context.tr('这首歌已经在该歌单中'),
+        ),
+      ),
     );
   }
 
@@ -474,16 +501,20 @@ class _LibraryPageState extends ConsumerState<LibraryPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('从曲库移除？'),
-        content: Text('只移除“${track.title}”的曲库记录，不会删除电脑上的原文件。'),
+        title: Text(context.tr('从曲库移除？')),
+        content: Text(
+          context
+              .tr('只移除“{title}”的曲库记录，不会删除电脑上的原文件。')
+              .replaceAll('{title}', context.metadata(track.title)),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
+            child: Text(context.tr('取消')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('移除'),
+            child: Text(context.tr('移除')),
           ),
         ],
       ),
@@ -524,10 +555,10 @@ class _Header extends StatelessWidget {
       children: [
         Text(
           switch (filter) {
-            LibraryFilter.all => '本地音乐',
-            LibraryFilter.favorites => '我的收藏',
-            LibraryFilter.videos => 'MV 专区',
-            LibraryFilter.recent => '最近播放',
+            LibraryFilter.all => context.tr('本地音乐'),
+            LibraryFilter.favorites => context.tr('我的收藏'),
+            LibraryFilter.videos => context.tr('MV 专区'),
+            LibraryFilter.recent => context.tr('最近播放'),
           },
           style: Theme.of(context).textTheme.headlineMedium?.copyWith(
             color: lightForeground ? Colors.white : AppColors.ink,
@@ -538,7 +569,10 @@ class _Header extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(
-          '${state.tracks.length} 首歌曲  ·  ${formatBytes(state.totalBytes)}',
+          context
+              .tr('{count} 首歌曲  ·  {size}')
+              .replaceAll('{count}', '${state.tracks.length}')
+              .replaceAll('{size}', formatBytes(state.totalBytes)),
           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
             color: lightForeground
                 ? Colors.white.withValues(alpha: 0.82)
@@ -558,17 +592,17 @@ class _Header extends StatelessWidget {
         OutlinedButton.icon(
           onPressed: onBatch,
           icon: const Icon(Icons.library_add_check_rounded, size: 18),
-          label: const Text('批量管理'),
+          label: Text(context.tr('批量管理')),
         ),
         OutlinedButton.icon(
           onPressed: state.isImporting ? null : onImportFolder,
           icon: const Icon(Icons.folder_open_rounded, size: 18),
-          label: const Text('扫描文件夹'),
+          label: Text(context.tr('扫描文件夹')),
         ),
         FilledButton.icon(
           onPressed: state.isImporting ? null : onImportFile,
           icon: const Icon(Icons.add_rounded, size: 19),
-          label: const Text('导入歌曲 / MV'),
+          label: Text(context.tr('导入歌曲 / MV')),
           style: _importButtonStyle(accent),
         ),
       ],
@@ -597,7 +631,7 @@ class _Header extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         IconButton.filledTonal(
-          tooltip: '批量管理',
+          tooltip: context.tr('批量管理'),
           onPressed: onBatch,
           style: IconButton.styleFrom(
             backgroundColor: Colors.white.withValues(alpha: 0.78),
@@ -611,7 +645,7 @@ class _Header extends StatelessWidget {
         FilledButton.icon(
           onPressed: state.isImporting ? null : onImportFile,
           icon: const Icon(Icons.add_rounded, size: 18),
-          label: const Text('导入'),
+          label: Text(context.tr('导入')),
           style: _importButtonStyle(accent),
         ),
       ],
@@ -680,9 +714,16 @@ class _InlineBatchBar extends StatelessWidget {
                           activeColor: accent,
                           onChanged: (_) => onSelectAll(),
                         ),
-                        Expanded(child: Text('已选 $selected / $total 首')),
+                        Expanded(
+                          child: Text(
+                            context
+                                .tr('已选 {selected} / {total} 首')
+                                .replaceAll('{selected}', '$selected')
+                                .replaceAll('{total}', '$total'),
+                          ),
+                        ),
                         IconButton(
-                          tooltip: '退出批量管理',
+                          tooltip: context.tr('退出批量管理'),
                           onPressed: onClose,
                           icon: const Icon(Icons.close_rounded),
                         ),
@@ -697,13 +738,13 @@ class _InlineBatchBar extends StatelessWidget {
                           onPressed: onUnfavorite,
                           style: TextButton.styleFrom(foregroundColor: accent),
                           icon: const Icon(Icons.heart_broken_outlined),
-                          label: const Text('取消收藏'),
+                          label: Text(context.tr('取消收藏')),
                         ),
                         TextButton.icon(
                           onPressed: onFavorite,
                           style: TextButton.styleFrom(foregroundColor: accent),
                           icon: const Icon(Icons.favorite_rounded),
-                          label: const Text('收藏'),
+                          label: Text(context.tr('收藏')),
                         ),
                         FilledButton.icon(
                           onPressed: onPlaylist,
@@ -712,7 +753,7 @@ class _InlineBatchBar extends StatelessWidget {
                             foregroundColor: accentForeground,
                           ),
                           icon: const Icon(Icons.playlist_add_rounded),
-                          label: const Text('加入歌单'),
+                          label: Text(context.tr('加入歌单')),
                         ),
                         TextButton.icon(
                           onPressed: onRemove,
@@ -720,7 +761,7 @@ class _InlineBatchBar extends StatelessWidget {
                             foregroundColor: const Color(0xFFD6405D),
                           ),
                           icon: const Icon(Icons.delete_outline_rounded),
-                          label: const Text('移除'),
+                          label: Text(context.tr('移除')),
                         ),
                       ],
                     ),
@@ -734,18 +775,23 @@ class _InlineBatchBar extends StatelessWidget {
                       activeColor: accent,
                       onChanged: (_) => onSelectAll(),
                     ),
-                    Text('已选 $selected / $total 首'),
+                    Text(
+                      context
+                          .tr('已选 {selected} / {total} 首')
+                          .replaceAll('{selected}', '$selected')
+                          .replaceAll('{total}', '$total'),
+                    ),
                     const Spacer(),
                     TextButton(
                       onPressed: onUnfavorite,
                       style: TextButton.styleFrom(foregroundColor: accent),
-                      child: const Text('取消收藏'),
+                      child: Text(context.tr('取消收藏')),
                     ),
                     TextButton.icon(
                       onPressed: onFavorite,
                       style: TextButton.styleFrom(foregroundColor: accent),
                       icon: const Icon(Icons.favorite_rounded),
-                      label: const Text('收藏'),
+                      label: Text(context.tr('收藏')),
                     ),
                     FilledButton.icon(
                       onPressed: onPlaylist,
@@ -754,7 +800,7 @@ class _InlineBatchBar extends StatelessWidget {
                         foregroundColor: accentForeground,
                       ),
                       icon: const Icon(Icons.playlist_add_rounded),
-                      label: const Text('加入歌单'),
+                      label: Text(context.tr('加入歌单')),
                     ),
                     TextButton.icon(
                       onPressed: onRemove,
@@ -762,10 +808,10 @@ class _InlineBatchBar extends StatelessWidget {
                         foregroundColor: const Color(0xFFD6405D),
                       ),
                       icon: const Icon(Icons.delete_outline_rounded),
-                      label: const Text('移除'),
+                      label: Text(context.tr('移除')),
                     ),
                     IconButton(
-                      tooltip: '退出批量管理',
+                      tooltip: context.tr('退出批量管理'),
                       onPressed: onClose,
                       icon: const Icon(Icons.close_rounded),
                     ),
@@ -808,7 +854,7 @@ class _BatchManageDialogState extends ConsumerState<_BatchManageDialog> {
     final target = await showDialog<PlaylistInfo>(
       context: context,
       builder: (context) => SimpleDialog(
-        title: const Text('添加到哪个歌单？'),
+        title: Text(context.tr('添加到哪个歌单？')),
         children: playlists
             .map(
               (playlist) => SimpleDialogOption(
@@ -829,8 +875,13 @@ class _BatchManageDialogState extends ConsumerState<_BatchManageDialog> {
         SnackBar(
           content: Text(
             skipped == 0
-                ? '已加入 ${target.name}'
-                : '已加入 $added 首，跳过 $skipped 首重复歌曲',
+                ? context
+                      .tr('已加入 {playlist}')
+                      .replaceAll('{playlist}', target.name)
+                : context
+                      .tr('已加入 {added} 首，跳过 {skipped} 首重复歌曲')
+                      .replaceAll('{added}', '$added')
+                      .replaceAll('{skipped}', '$skipped'),
           ),
         ),
       );
@@ -845,7 +896,11 @@ class _BatchManageDialogState extends ConsumerState<_BatchManageDialog> {
         .playlists
         .isNotEmpty;
     return AlertDialog(
-      title: Text('批量管理 · 已选 ${_selected.length} 首'),
+      title: Text(
+        context
+            .tr('批量管理 · 已选 {count} 首')
+            .replaceAll('{count}', '${_selected.length}'),
+      ),
       content: SizedBox(
         width: 620,
         height: 470,
@@ -858,11 +913,11 @@ class _BatchManageDialogState extends ConsumerState<_BatchManageDialog> {
               value: checked,
               secondary: TrackArtwork(track: track, size: 42, borderRadius: 10),
               title: Text(
-                track.title,
+                context.metadata(track.title),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-              subtitle: Text(track.artist),
+              subtitle: Text(context.metadata(track.artist)),
               onChanged: (_) => setState(
                 () => checked
                     ? _selected.remove(track.id)
@@ -875,21 +930,21 @@ class _BatchManageDialogState extends ConsumerState<_BatchManageDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('取消'),
+          child: Text(context.tr('取消')),
         ),
         TextButton(
           onPressed: _selected.isEmpty ? null : () => _favorite(false),
-          child: const Text('取消收藏'),
+          child: Text(context.tr('取消收藏')),
         ),
         TextButton.icon(
           onPressed: _selected.isEmpty ? null : () => _favorite(true),
           icon: const Icon(Icons.favorite_rounded),
-          label: const Text('收藏'),
+          label: Text(context.tr('收藏')),
         ),
         FilledButton.icon(
           onPressed: _selected.isEmpty || !hasPlaylists ? null : _addToPlaylist,
           icon: const Icon(Icons.playlist_add_rounded),
-          label: const Text('加入歌单'),
+          label: Text(context.tr('加入歌单')),
         ),
       ],
     );
@@ -915,14 +970,14 @@ class _SearchField extends StatelessWidget {
           color: AppColors.ink,
           fontWeight: FontWeight.w600,
         ),
-        decoration: const InputDecoration(
-          hintText: '搜索歌名、歌手或专辑',
-          hintStyle: TextStyle(
+        decoration: InputDecoration(
+          hintText: context.tr('搜索歌名、歌手或专辑'),
+          hintStyle: const TextStyle(
             color: AppColors.textSecondary,
             fontWeight: FontWeight.w500,
           ),
-          prefixIcon: Icon(Icons.search_rounded),
-          suffixIcon: Icon(Icons.tune_rounded, size: 18),
+          prefixIcon: const Icon(Icons.search_rounded),
+          suffixIcon: const Icon(Icons.tune_rounded, size: 18),
           filled: false,
           border: InputBorder.none,
           enabledBorder: InputBorder.none,
@@ -956,10 +1011,10 @@ class _FilterTabs extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children:
               [
-                    (LibraryFilter.all, '全部'),
-                    (LibraryFilter.favorites, '收藏'),
-                    (LibraryFilter.videos, '有 MV'),
-                    (LibraryFilter.recent, '最近'),
+                    (LibraryFilter.all, context.tr('全部')),
+                    (LibraryFilter.favorites, context.tr('收藏')),
+                    (LibraryFilter.videos, context.tr('有 MV')),
+                    (LibraryFilter.recent, context.tr('最近')),
                   ]
                   .map((item) {
                     final selected = item.$1 == value;
@@ -1058,16 +1113,16 @@ class _DesktopTrackList extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Column(
         children: [
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 15, vertical: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
             child: Row(
               children: [
-                SizedBox(width: 40, child: Text('#')),
-                Expanded(flex: 5, child: Text('歌曲')),
-                Expanded(flex: 3, child: Text('专辑')),
-                SizedBox(width: 66, child: Text('类型')),
-                SizedBox(width: 65, child: Text('时长')),
-                SizedBox(width: 86),
+                const SizedBox(width: 40, child: Text('#')),
+                Expanded(flex: 5, child: Text(context.tr('歌曲'))),
+                Expanded(flex: 3, child: Text(context.tr('专辑'))),
+                SizedBox(width: 66, child: Text(context.tr('类型'))),
+                SizedBox(width: 65, child: Text(context.tr('时长'))),
+                const SizedBox(width: 86),
               ],
             ),
           ),
@@ -1414,11 +1469,13 @@ class _MediaTypeBadge extends StatelessWidget {
         borderRadius: BorderRadius.circular(6),
       ),
       child: Text(
-        videoOnly
-            ? '视频'
-            : hasVideo
-            ? '音频＋MV'
-            : '音频',
+        context.tr(
+          videoOnly
+              ? '视频'
+              : hasVideo
+              ? '音频＋MV'
+              : '音频',
+        ),
         style: TextStyle(
           color: hasVideo ? AppColors.accent : AppColors.textSecondary,
           fontSize: 10,
@@ -1430,8 +1487,9 @@ class _MediaTypeBadge extends StatelessWidget {
 }
 
 class _EmptyLibrary extends StatelessWidget {
-  const _EmptyLibrary({required this.onImport});
+  const _EmptyLibrary({required this.accent, required this.onImport});
 
+  final Color accent;
   final VoidCallback onImport;
 
   @override
@@ -1439,37 +1497,57 @@ class _EmptyLibrary extends StatelessWidget {
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 430),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 88,
-              height: 88,
-              decoration: const BoxDecoration(
-                color: Color(0xFFFFEEF1),
-                shape: BoxShape.circle,
+        // Empty-state copy used to sit directly on the wallpaper. A bright
+        // theme looked acceptable, but dark/custom artwork could reduce the
+        // text contrast almost to zero. This restrained glass surface makes
+        // the foreground deterministic while still carrying the theme tint.
+        child: LiquidGlass(
+          borderRadius: 28,
+          blur: 18,
+          tint: accent,
+          padding: const EdgeInsets.fromLTRB(34, 30, 34, 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 88,
+                height: 88,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.14),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.76),
+                  ),
+                ),
+                child: Icon(
+                  Icons.library_music_rounded,
+                  color: accent,
+                  size: 42,
+                ),
               ),
-              child: const Icon(
-                Icons.library_music_rounded,
-                color: AppColors.accent,
-                size: 42,
+              const SizedBox(height: 18),
+              Text(
+                context.tr('这里还没有音乐'),
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  color: AppColors.ink,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
-            ),
-            const SizedBox(height: 18),
-            Text('这里还没有音乐', style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 7),
-            Text(
-              '把电脑里的 MP3 或 MP4/MV 导进来，建立你的音乐库。',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 18),
-            FilledButton.icon(
-              onPressed: onImport,
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('导入第一首歌 / MV'),
-            ),
-          ],
+              const SizedBox(height: 7),
+              Text(
+                context.tr('把电脑里的 MP3 或 MP4/MV 导进来，建立你的音乐库。'),
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium
+                    ?.copyWith(color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 18),
+              FilledButton.icon(
+                onPressed: onImport,
+                icon: const Icon(Icons.add_rounded),
+                label: Text(context.tr('导入第一首歌 / MV')),
+              ),
+            ],
+          ),
         ),
       ),
     );

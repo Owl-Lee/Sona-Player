@@ -106,7 +106,7 @@ class AccountController extends StateNotifier<AccountState> {
     return _run(() async {
       final username = _normalizeUsername(identifier);
       if (!_isValidUsername(username)) {
-        throw StateError('请输入有效账号名。');
+        throw StateError('account_username_invalid');
       }
       final client = _client!;
       final response = await client.auth.signInWithPassword(
@@ -114,13 +114,13 @@ class AccountController extends StateNotifier<AccountState> {
         password: password,
       );
       final user = response.user;
-      if (user == null) throw StateError('登录没有完成，请重试。');
+      if (user == null) throw StateError('account_sign_in_incomplete');
       state = state.copyWith(
         user: user,
         username: username,
         displayName: _metadataDisplayName(user),
         error: '',
-        message: '登录成功，正在检查云端数据。',
+        message: 'account_sign_in_success',
       );
       unawaited(_loadProfile());
     });
@@ -134,7 +134,7 @@ class AccountController extends StateNotifier<AccountState> {
     return _run(() async {
       final normalizedUsername = _normalizeUsername(username);
       if (!_isValidUsername(normalizedUsername)) {
-        throw StateError('账号名格式不正确。');
+        throw StateError('account_username_format_invalid');
       }
       final client = _client!;
       final response = await client.auth.signUp(
@@ -147,14 +147,14 @@ class AccountController extends StateNotifier<AccountState> {
       );
       final user = response.user;
       if (user == null || response.session == null) {
-        throw StateError('账号创建没有完成，请确认云端已关闭邮箱验证后重试。');
+        throw StateError('account_sign_up_incomplete');
       }
       state = state.copyWith(
         user: user,
         username: normalizedUsername,
         displayName: displayName.trim(),
         error: '',
-        message: '账号创建成功，已经登录。',
+        message: 'account_sign_up_success',
       );
       // Authentication is already complete here. A delayed/mismatched profile
       // schema must not make a successfully-created account look like a
@@ -180,7 +180,7 @@ class AccountController extends StateNotifier<AccountState> {
         displayName: '',
         username: '',
         clearAvatar: true,
-        message: '已退出云账号，本地音乐不会受到影响。',
+        message: 'account_signed_out',
       );
     } catch (error) {
       state = state.copyWith(loading: false, error: _friendlyError(error));
@@ -212,7 +212,7 @@ class AccountController extends StateNotifier<AccountState> {
       state = state.copyWith(
         displayName: name,
         loading: false,
-        message: '显示名称已同步。',
+        message: 'account_display_name_synced',
       );
     } catch (error) {
       state = state.copyWith(loading: false, error: _friendlyError(error));
@@ -223,7 +223,11 @@ class AccountController extends StateNotifier<AccountState> {
     final client = _client;
     final user = client?.auth.currentUser;
     if (client == null || user == null) return;
-    state = state.copyWith(loading: true, error: '', message: '正在上传头像…');
+    state = state.copyWith(
+      loading: true,
+      error: '',
+      message: 'account_avatar_uploading',
+    );
     try {
       String? oldPath = _metadataAvatarPath(user);
       try {
@@ -278,7 +282,7 @@ class AccountController extends StateNotifier<AccountState> {
         username: _visibleUsername(user),
         avatarUrl: avatarUrl,
         error: '',
-        message: '头像更新成功，登录其他设备后会自动恢复。',
+        message: 'account_avatar_updated',
       );
     } catch (error) {
       state = state.copyWith(loading: false, error: _friendlyError(error));
@@ -344,7 +348,7 @@ class AccountController extends StateNotifier<AccountState> {
 
   Future<bool> _run(Future<void> Function() operation) async {
     if (_client == null) {
-      state = state.copyWith(error: '云端尚未配置。');
+      state = state.copyWith(error: 'account_cloud_not_configured');
       return false;
     }
     state = state.copyWith(loading: true, error: '', message: '');
@@ -364,24 +368,24 @@ class AccountController extends StateNotifier<AccountState> {
       final message = error.message.toLowerCase();
       if (code == 'email_provider_disabled' ||
           message.contains('email signups are disabled')) {
-        return '云端注册入口尚未开启，请稍后重试。';
+        return 'account_sign_up_disabled';
       }
       if (code == 'invalid_credentials') {
-        return '账号名或密码不正确。';
+        return 'account_invalid_credentials';
       }
       if (code == 'user_already_exists' || code == 'email_exists') {
-        return '这个账号名已被使用，请换一个账号名。';
+        return 'account_username_taken';
       }
-      return '账号服务暂时无法完成操作，请稍后重试。';
+      return 'account_service_unavailable';
     }
     if (error is StorageException) {
-      return '头像暂时无法保存到云端，请稍后重试。';
+      return 'account_avatar_save_failed';
     }
     if (error is PostgrestException) {
-      return '云端资料暂时无法更新，账号仍保持登录，请稍后重试。';
+      return 'account_profile_update_failed';
     }
     if (error is StateError) return error.message;
-    return '操作没有完成，请稍后重试。';
+    return 'account_operation_failed';
   }
 
   static bool _isValidUsername(String value) =>
@@ -399,7 +403,7 @@ class AccountController extends StateNotifier<AccountState> {
     if (email.endsWith(internalSuffix)) {
       return email.substring(0, email.length - internalSuffix.length);
     }
-    return 'Sona 用户';
+    return '';
   }
 
   static String _metadataDisplayName(User? user) =>

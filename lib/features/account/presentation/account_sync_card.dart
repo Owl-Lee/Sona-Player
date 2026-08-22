@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,6 +16,19 @@ import '../../settings/application/appearance_controller.dart';
 import '../../settings/presentation/widgets/image_crop_dialog.dart';
 import '../application/account_controller.dart';
 
+String _localizedCloudMessage(
+  BuildContext context,
+  String code,
+  Map<String, String> arguments,
+) {
+  return context.trArgs(code, {
+    for (final entry in arguments.entries)
+      entry.key: entry.key == 'title'
+          ? context.metadata(entry.value)
+          : entry.value,
+  });
+}
+
 class AccountSyncCard extends ConsumerWidget {
   const AccountSyncCard({super.key});
 
@@ -28,9 +43,11 @@ class AccountSyncCard extends ConsumerWidget {
     if (!account.configured) {
       return _CloudPanel(
         icon: Icons.cloud_sync_outlined,
-        title: '云账号框架已就绪',
-        description: '等待连接 Supabase 项目。连接后先同步账号、头像、歌单、收藏、播放统计和设置；歌曲文件稍后单独启用。',
-        badge: '等待密钥',
+        title: context.tr('云账号框架已就绪'),
+        description: context.tr(
+          '等待连接 Supabase 项目。连接后先同步账号、头像、歌单、收藏、播放统计和设置；歌曲文件稍后单独启用。',
+        ),
+        badge: context.tr('等待密钥'),
         actions: const [],
         glassTint: glassTint,
       );
@@ -41,18 +58,20 @@ class AccountSyncCard extends ConsumerWidget {
           ? account.displayName
           : account.username.isNotEmpty
           ? account.username
-          : 'Sona 用户';
+          : context.tr('Sona 用户');
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _CloudPanel(
             icon: Icons.account_circle_outlined,
             title: displayName,
-            description: '管理头像、名称和当前登录账号。',
-            badge: '已连接',
+            description: context.tr('管理头像、名称和当前登录账号。'),
+            badge: context.tr('已连接'),
             avatarUrl: account.avatarUrl,
             busy: account.loading,
-            message: account.error.isNotEmpty ? account.error : account.message,
+            message: context.tr(
+              account.error.isNotEmpty ? account.error : account.message,
+            ),
             isError: account.error.isNotEmpty,
             glassTint: glassTint,
             actions: [
@@ -61,39 +80,45 @@ class AccountSyncCard extends ConsumerWidget {
                     ? null
                     : () => _pickAndUploadAvatar(context, controller),
                 icon: const Icon(Icons.add_a_photo_outlined),
-                label: const Text('更换头像'),
+                label: Text(context.tr('更换头像')),
               ),
               OutlinedButton.icon(
                 onPressed: account.loading || sync.syncing
                     ? null
                     : () => _showNameDialog(context, ref, account.displayName),
                 icon: const Icon(Icons.edit_outlined),
-                label: const Text('修改名称'),
+                label: Text(context.tr('修改名称')),
               ),
               OutlinedButton.icon(
                 onPressed: account.loading || sync.syncing
                     ? null
                     : controller.signOut,
                 icon: const Icon(Icons.logout_rounded),
-                label: const Text('退出账号'),
+                label: Text(context.tr('退出账号')),
               ),
             ],
           ),
           const SizedBox(height: 14),
           _CloudPanel(
             icon: Icons.cloud_sync_outlined,
-            title: '云同步',
+            title: context.tr('云同步'),
             description: sync.offline
-                ? '离线状态，无法连接至云端。本地曲库和播放不受影响。'
-                : '查看同步预览、同步状态，并管理云端保存的歌曲。',
-            badge: sync.offline ? '离线' : (sync.syncing ? '同步中' : '云空间'),
+                ? context.tr('离线状态，无法连接至云端。本地曲库和播放不受影响。')
+                : context.tr('查看同步预览、同步状态，并管理云端保存的歌曲。'),
+            badge: sync.offline
+                ? context.tr('离线')
+                : context.tr(sync.syncing ? '同步中' : '云空间'),
             busy: sync.syncing,
             progress: sync.syncing ? sync.progress : null,
             message: sync.error.isNotEmpty
-                ? sync.error
+                ? _localizedCloudMessage(context, sync.error, sync.errorArgs)
                 : sync.summary.isNotEmpty
-                ? sync.summary
-                : sync.status,
+                ? _localizedCloudMessage(
+                    context,
+                    sync.summary,
+                    sync.summaryArgs,
+                  )
+                : _localizedCloudMessage(context, sync.status, sync.statusArgs),
             isError: sync.error.isNotEmpty,
             glassTint: glassTint,
             actions: [
@@ -102,7 +127,7 @@ class AccountSyncCard extends ConsumerWidget {
                     ? null
                     : () => syncController.previewSync(library),
                 icon: const Icon(Icons.preview_outlined),
-                label: const Text('同步预览'),
+                label: Text(context.tr('同步预览')),
               ),
               FilledButton.icon(
                 onPressed: sync.syncing
@@ -117,7 +142,7 @@ class AccountSyncCard extends ConsumerWidget {
                         }
                       },
                 icon: const Icon(Icons.sync_rounded),
-                label: Text(sync.syncing ? '同步中' : '立即同步'),
+                label: Text(context.tr(sync.syncing ? '同步中' : '立即同步')),
               ),
             ],
           ),
@@ -129,28 +154,28 @@ class AccountSyncCard extends ConsumerWidget {
     return _CloudPanel(
       icon: user == null ? Icons.account_circle_outlined : Icons.cloud_done,
       title: user == null
-          ? '登录 Sona 云账号'
+          ? context.tr('登录 Sona 云账号')
           : account.displayName.isNotEmpty
           ? account.displayName
           : account.username.isNotEmpty
           ? account.username
-          : 'Sona 用户',
+          : context.tr('Sona 用户'),
       description: user == null
-          ? '使用账号名和密码登录；同一账号可同步头像、收藏、歌单、播放记录和音乐数据。'
-          : '你的收藏、歌单、播放记录和小于 50 MB 的音乐可在已登录设备间同步；本地原文件仍保留在本机。',
-      badge: user == null ? '未登录' : '已连接',
+          ? context.tr('使用账号名和密码登录；同一账号可同步头像、收藏、歌单、播放记录和音乐数据。')
+          : context.tr('你的收藏、歌单、播放记录和小于 50 MB 的音乐可在已登录设备间同步；本地原文件仍保留在本机。'),
+      badge: context.tr(user == null ? '未登录' : '已连接'),
       avatarUrl: account.avatarUrl,
       busy: account.loading || sync.syncing,
       progress: sync.syncing ? sync.progress : null,
       message: account.error.isNotEmpty
-          ? account.error
+          ? context.tr(account.error)
           : sync.error.isNotEmpty
-          ? sync.error
+          ? _localizedCloudMessage(context, sync.error, sync.errorArgs)
           : sync.summary.isNotEmpty
-          ? sync.summary
+          ? _localizedCloudMessage(context, sync.summary, sync.summaryArgs)
           : sync.status.isNotEmpty
-          ? sync.status
-          : account.message,
+          ? _localizedCloudMessage(context, sync.status, sync.statusArgs)
+          : context.tr(account.message),
       isError: account.error.isNotEmpty || sync.error.isNotEmpty,
       actions: user == null
           ? [
@@ -158,13 +183,13 @@ class AccountSyncCard extends ConsumerWidget {
                 onPressed: account.loading
                     ? null
                     : () => _showAuthDialog(context, ref, register: false),
-                child: const Text('登录'),
+                child: Text(context.tr('登录')),
               ),
               FilledButton(
                 onPressed: account.loading
                     ? null
                     : () => _showAuthDialog(context, ref, register: true),
-                child: const Text('注册'),
+                child: Text(context.tr('注册')),
               ),
             ]
           : [
@@ -173,7 +198,7 @@ class AccountSyncCard extends ConsumerWidget {
                     ? null
                     : () => syncController.previewSync(library),
                 icon: const Icon(Icons.preview_outlined),
-                label: const Text('同步预览'),
+                label: Text(context.tr('同步预览')),
               ),
               FilledButton.icon(
                 onPressed: sync.syncing
@@ -187,28 +212,28 @@ class AccountSyncCard extends ConsumerWidget {
                         }
                       },
                 icon: const Icon(Icons.sync_rounded),
-                label: Text(sync.syncing ? '同步中' : '立即同步'),
+                label: Text(context.tr(sync.syncing ? '同步中' : '立即同步')),
               ),
               OutlinedButton.icon(
                 onPressed: account.loading || sync.syncing
                     ? null
                     : () => _pickAndUploadAvatar(context, controller),
                 icon: const Icon(Icons.add_a_photo_outlined),
-                label: const Text('更换头像'),
+                label: Text(context.tr('更换头像')),
               ),
               OutlinedButton.icon(
                 onPressed: account.loading || sync.syncing
                     ? null
                     : () => _showNameDialog(context, ref, account.displayName),
                 icon: const Icon(Icons.edit_outlined),
-                label: const Text('修改名称'),
+                label: Text(context.tr('修改名称')),
               ),
               OutlinedButton.icon(
                 onPressed: account.loading || sync.syncing
                     ? null
                     : controller.signOut,
                 icon: const Icon(Icons.logout_rounded),
-                label: const Text('退出账号'),
+                label: Text(context.tr('退出账号')),
               ),
             ],
       glassTint: glassTint,
@@ -227,8 +252,8 @@ class AccountSyncCard extends ConsumerWidget {
       context,
       imageBytes: bytes,
       aspectRatio: 1,
-      title: '裁切头像',
-      hint: '拖动图片并缩放，保留想展示的正方形区域。',
+      title: context.tr('裁切头像'),
+      hint: context.tr('拖动图片并缩放，保留想展示的正方形区域。'),
     );
     if (cropped == null) return;
     await controller.uploadAvatar(cropped);
@@ -255,7 +280,7 @@ class AccountSyncCard extends ConsumerWidget {
             vertical: 24,
           ),
           scrollable: true,
-          title: Text(register ? '注册 Sona' : '登录 Sona'),
+          title: Text(context.tr(register ? '注册 Sona' : '登录 Sona')),
           content: SizedBox(
             width: 410,
             child: Column(
@@ -267,9 +292,9 @@ class AccountSyncCard extends ConsumerWidget {
                     textInputAction: TextInputAction.next,
                     autocorrect: false,
                     maxLength: 24,
-                    decoration: const InputDecoration(
-                      labelText: '账号名',
-                      helperText: '3–24 位：字母、数字或下划线；以字母开头',
+                    decoration: InputDecoration(
+                      labelText: context.tr('账号名'),
+                      helperText: context.tr('3–24 位：字母、数字或下划线；以字母开头'),
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -277,7 +302,9 @@ class AccountSyncCard extends ConsumerWidget {
                     controller: name,
                     textInputAction: TextInputAction.next,
                     maxLength: 30,
-                    decoration: const InputDecoration(labelText: '显示名称（可选）'),
+                    decoration: InputDecoration(
+                      labelText: context.tr('显示名称（可选）'),
+                    ),
                   ),
                   const SizedBox(height: 10),
                 ],
@@ -287,7 +314,7 @@ class AccountSyncCard extends ConsumerWidget {
                     keyboardType: TextInputType.text,
                     autocorrect: false,
                     textInputAction: TextInputAction.next,
-                    decoration: const InputDecoration(labelText: '账号名'),
+                    decoration: InputDecoration(labelText: context.tr('账号名')),
                   ),
                   const SizedBox(height: 10),
                 ],
@@ -303,10 +330,10 @@ class AccountSyncCard extends ConsumerWidget {
                       ? TextInputAction.next
                       : TextInputAction.done,
                   decoration: InputDecoration(
-                    labelText: '密码',
-                    helperText: '至少 8 位',
+                    labelText: context.tr('密码'),
+                    helperText: context.tr('至少 8 位'),
                     suffixIcon: IconButton(
-                      tooltip: passwordVisible ? '隐藏密码' : '显示密码',
+                      tooltip: context.tr(passwordVisible ? '隐藏密码' : '显示密码'),
                       onPressed: () => setDialogState(
                         () => passwordVisible = !passwordVisible,
                       ),
@@ -329,10 +356,12 @@ class AccountSyncCard extends ConsumerWidget {
                     textInputAction: TextInputAction.done,
                     onSubmitted: (_) => FocusScope.of(dialogContext).unfocus(),
                     decoration: InputDecoration(
-                      labelText: '确认密码',
-                      helperText: '请再输入一次密码',
+                      labelText: context.tr('确认密码'),
+                      helperText: context.tr('请再输入一次密码'),
                       suffixIcon: IconButton(
-                        tooltip: confirmPasswordVisible ? '隐藏密码' : '显示密码',
+                        tooltip: context.tr(
+                          confirmPasswordVisible ? '隐藏密码' : '显示密码',
+                        ),
                         onPressed: () => setDialogState(
                           () =>
                               confirmPasswordVisible = !confirmPasswordVisible,
@@ -352,7 +381,7 @@ class AccountSyncCard extends ConsumerWidget {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('取消'),
+              child: Text(context.tr('取消')),
             ),
             FilledButton(
               onPressed: () async {
@@ -369,7 +398,11 @@ class AccountSyncCard extends ConsumerWidget {
                     context,
                     SnackBar(
                       content: Text(
-                        register ? '账号名格式不正确，密码至少 8 位。' : '请输入正确的账号名，密码至少 8 位。',
+                        context.tr(
+                          register
+                              ? '账号名格式不正确，密码至少 8 位。'
+                              : '请输入正确的账号名，密码至少 8 位。',
+                        ),
                       ),
                     ),
                   );
@@ -378,7 +411,7 @@ class AccountSyncCard extends ConsumerWidget {
                 if (register && password.text != confirmPassword.text) {
                   showLatestSnackBar(
                     context,
-                    const SnackBar(content: Text('两次输入的密码不一致，请重新确认。')),
+                    SnackBar(content: Text(context.tr('两次输入的密码不一致，请重新确认。'))),
                   );
                   return;
                 }
@@ -396,7 +429,11 @@ class AccountSyncCard extends ConsumerWidget {
                 if (success && dialogContext.mounted) {
                   showLatestSnackBar(
                     context,
-                    SnackBar(content: Text(register ? '账号创建成功，已登录。' : '登录成功。')),
+                    SnackBar(
+                      content: Text(
+                        context.tr(register ? '账号创建成功，已登录。' : '登录成功。'),
+                      ),
+                    ),
                   );
                   Navigator.pop(dialogContext);
                 } else if (dialogContext.mounted) {
@@ -404,12 +441,16 @@ class AccountSyncCard extends ConsumerWidget {
                   showLatestSnackBar(
                     context,
                     SnackBar(
-                      content: Text(error.isEmpty ? '操作未完成，请重试。' : error),
+                      content: Text(
+                        error.isEmpty
+                            ? context.tr('操作未完成，请重试。')
+                            : context.tr(error),
+                      ),
                     ),
                   );
                 }
               },
-              child: Text(register ? '创建账号' : '登录'),
+              child: Text(context.tr(register ? '创建账号' : '登录')),
             ),
           ],
         ),
@@ -431,17 +472,17 @@ class AccountSyncCard extends ConsumerWidget {
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('修改显示名称'),
+        title: Text(context.tr('修改显示名称')),
         content: TextField(
           controller: name,
           autofocus: true,
           maxLength: 30,
-          decoration: const InputDecoration(labelText: '显示名称'),
+          decoration: InputDecoration(labelText: context.tr('显示名称')),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('取消'),
+            child: Text(context.tr('取消')),
           ),
           FilledButton(
             onPressed: () async {
@@ -450,7 +491,7 @@ class AccountSyncCard extends ConsumerWidget {
                   .updateDisplayName(name.text);
               if (dialogContext.mounted) Navigator.pop(dialogContext);
             },
-            child: const Text('保存'),
+            child: Text(context.tr('保存')),
           ),
         ],
       ),
@@ -511,29 +552,75 @@ class _CloudLibraryPanelState extends ConsumerState<_CloudLibraryPanel> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('从云端删除？'),
+        title: Text(context.tr('移入云端回收站？')),
         content: Text(
-          '“${track.title}”会从云空间和其他设备可同步内容中移除。\n\n'
-          '本机文件不会删除；此后它也不会被自动重新上传。',
+          context
+              .tr(
+                '“{title}”会移入云端回收站，30 天内可以恢复。\n\n'
+                '本机文件不会删除；回收站中的歌曲不会被自动重新上传。',
+              )
+              .replaceAll('{title}', context.metadata(track.title)),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
+            child: Text(context.tr('取消')),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('删除云副本'),
+            child: Text(context.tr('移入回收站')),
           ),
         ],
       ),
     );
     if (confirmed == true && mounted) {
-      await ref
+      final success = await ref
           .read(cloudSyncControllerProvider.notifier)
           .deleteCloudTrack(track);
+      if (!mounted || !success) return;
+      showLatestSnackBar(
+        context,
+        SnackBar(
+          duration: const Duration(seconds: 6),
+          content: Text(
+            context
+                .tr('已将“{title}”移入云端回收站。')
+                .replaceAll('{title}', context.metadata(track.title)),
+          ),
+          action: SnackBarAction(
+            label: context.tr('撤销'),
+            onPressed: () => unawaited(_restoreDeletedTracks([track])),
+          ),
+        ),
+      );
     }
+  }
+
+  Future<void> _restoreDeletedTracks(Iterable<CloudTrackSummary> tracks) async {
+    final controller = ref.read(cloudSyncControllerProvider.notifier);
+    var restored = 0;
+    for (final track in tracks) {
+      if (await controller.restoreCloudTrack(track)) restored += 1;
+    }
+    if (!mounted) return;
+    showLatestSnackBar(
+      context,
+      SnackBar(
+        content: Text(
+          context.tr('已恢复 {count} 首云端歌曲。').replaceAll('{count}', '$restored'),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showRecycleBin() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _CloudRecycleSheet(glassTint: widget.glassTint),
+    );
   }
 
   void _setSelecting(bool value) {
@@ -589,8 +676,8 @@ class _CloudLibraryPanelState extends ConsumerState<_CloudLibraryPanel> {
         ),
         content: Text(
           context.tr(
-            '这些歌曲会从云空间和其他设备可同步内容中移除。\n\n'
-            '本机文件不会删除；此后它们也不会被自动重新上传。此操作无法撤销。',
+            '这些歌曲会移入云端回收站，30 天内可以恢复。\n\n'
+            '本机文件不会删除；回收站中的歌曲不会被自动重新上传。',
           ),
         ),
         actions: [
@@ -604,7 +691,7 @@ class _CloudLibraryPanelState extends ConsumerState<_CloudLibraryPanel> {
             icon: const Icon(Icons.delete_outline_rounded),
             label: Text(
               context
-                  .tr('删除 {count} 首云副本')
+                  .tr('移入回收站（{count}）')
                   .replaceAll('{count}', '${selected.length}'),
             ),
           ),
@@ -620,6 +707,7 @@ class _CloudLibraryPanelState extends ConsumerState<_CloudLibraryPanel> {
     });
     final controller = ref.read(cloudSyncControllerProvider.notifier);
     var removed = 0;
+    final removedTracks = <CloudTrackSummary>[];
     final failedIds = <String>{};
     for (var index = 0; index < selected.length; index += 1) {
       final track = selected[index];
@@ -628,6 +716,7 @@ class _CloudLibraryPanelState extends ConsumerState<_CloudLibraryPanel> {
       if (!mounted) return;
       if (success) {
         removed += 1;
+        removedTracks.add(track);
         _selectedCloudTrackIds.remove(track.id);
       } else {
         failedIds.add(track.id);
@@ -657,16 +746,24 @@ class _CloudLibraryPanelState extends ConsumerState<_CloudLibraryPanel> {
     showLatestSnackBar(
       context,
       SnackBar(
+        duration: const Duration(seconds: 8),
         content: Text(
           failedIds.isEmpty
               ? context
-                    .tr('已从云端删除 {removed} 首歌曲，本机文件保持不变。')
+                    .tr('已将 {removed} 首歌曲移入云端回收站。')
                     .replaceAll('{removed}', '$removed')
               : context
                     .tr('已删除 {removed} 首，{failed} 首未能删除，请稍后重试。')
                     .replaceAll('{removed}', '$removed')
                     .replaceAll('{failed}', '${failedIds.length}'),
         ),
+        action: removedTracks.isEmpty
+            ? null
+            : SnackBarAction(
+                label: context.tr('撤销'),
+                onPressed: () =>
+                    unawaited(_restoreDeletedTracks(removedTracks)),
+              ),
       ),
     );
   }
@@ -684,7 +781,7 @@ class _CloudLibraryPanelState extends ConsumerState<_CloudLibraryPanel> {
       if (localTrack == null) {
         showLatestSnackBar(
           context,
-          const SnackBar(content: Text('云端文件暂时不可用，请稍后重试。')),
+          SnackBar(content: Text(context.tr('云端文件暂时不可用，请稍后重试。'))),
         );
         return;
       }
@@ -695,7 +792,12 @@ class _CloudLibraryPanelState extends ConsumerState<_CloudLibraryPanel> {
       if (queue.every((item) => item.contentHash != localTrack.contentHash)) {
         queue.insert(0, localTrack);
       }
-      await playTrack(ref, localTrack, queue, source: '云端资料库');
+      await playTrack(
+        ref,
+        localTrack,
+        queue,
+        source: 'queue_source_cloud_library',
+      );
     } finally {
       if (mounted && _cloudPlaybackRequests.isCurrent(request)) {
         setState(() => _openingCloudTrackId = null);
@@ -714,15 +816,18 @@ class _CloudLibraryPanelState extends ConsumerState<_CloudLibraryPanel> {
     return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 
-  String _displayArtist(CloudTrackSummary track) {
+  String _displayArtist(BuildContext context, CloudTrackSummary track) {
     final artist = track.artist.trim();
     if (artist.isEmpty || artist.toLowerCase() == 'unknown artist') {
-      return '未标注歌手';
+      return context.tr('未标注歌手');
     }
-    return artist;
+    return context.metadata(artist);
   }
 
-  List<CloudTrackSummary> _visibleTracks(List<CloudTrackSummary> tracks) {
+  List<CloudTrackSummary> _visibleTracks(
+    BuildContext context,
+    List<CloudTrackSummary> tracks,
+  ) {
     final query = _searchController.text.trim().toLowerCase();
     final visible = tracks
         .where((track) {
@@ -735,16 +840,20 @@ class _CloudLibraryPanelState extends ConsumerState<_CloudLibraryPanel> {
           if (query.isEmpty) return true;
           return <String>[
             track.title,
-            _displayArtist(track),
+            _displayArtist(context, track),
             track.album,
           ].join('\n').toLowerCase().contains(query);
         })
         .toList(growable: false);
-    visible.sort(_compareTracks);
+    visible.sort((first, second) => _compareTracks(context, first, second));
     return visible;
   }
 
-  int _compareTracks(CloudTrackSummary first, CloudTrackSummary second) {
+  int _compareTracks(
+    BuildContext context,
+    CloudTrackSummary first,
+    CloudTrackSummary second,
+  ) {
     int compareText(String a, String b) =>
         a.toLowerCase().compareTo(b.toLowerCase());
 
@@ -754,8 +863,8 @@ class _CloudLibraryPanelState extends ConsumerState<_CloudLibraryPanel> {
       ),
       _CloudTrackSort.title => compareText(first.title, second.title),
       _CloudTrackSort.artist => compareText(
-        _displayArtist(first),
-        _displayArtist(second),
+        _displayArtist(context, first),
+        _displayArtist(context, second),
       ),
       _CloudTrackSort.album => compareText(first.album, second.album),
       _CloudTrackSort.size => second.fileSize.compareTo(first.fileSize),
@@ -765,25 +874,34 @@ class _CloudLibraryPanelState extends ConsumerState<_CloudLibraryPanel> {
   }
 
   Map<String, List<CloudTrackSummary>> _artistGroups(
+    BuildContext context,
     List<CloudTrackSummary> tracks,
   ) {
     final groups = <String, List<CloudTrackSummary>>{};
     for (final track in tracks) {
-      groups.putIfAbsent(_displayArtist(track), () => []).add(track);
+      groups.putIfAbsent(_displayArtist(context, track), () => []).add(track);
     }
     return groups;
   }
 
-  String _resultDescription({
+  String _resultDescription(
+    BuildContext context, {
     required int visibleCount,
     required int totalCount,
   }) {
-    final noun = _view == _CloudLibraryView.tracks ? '首曲目' : '位歌手';
     if (_searchController.text.trim().isEmpty &&
         _filter == _CloudMediaFilter.all) {
-      return '共 $visibleCount $noun · 可搜索、筛选和排序';
+      final template = _view == _CloudLibraryView.tracks
+          ? context.tr('共 {count} 首曲目 · 可搜索、筛选和排序')
+          : context.tr('共 {count} 位歌手 · 可搜索、筛选和排序');
+      return template.replaceAll('{count}', '$visibleCount');
     }
-    return '找到 $visibleCount $noun（云端共 $totalCount 首）';
+    final template = _view == _CloudLibraryView.tracks
+        ? context.tr('找到 {visible} 首曲目（云端共 {total} 首）')
+        : context.tr('找到 {visible} 位歌手（云端共 {total} 首）');
+    return template
+        .replaceAll('{visible}', '$visibleCount')
+        .replaceAll('{total}', '$totalCount');
   }
 
   Widget _buildBrowser(
@@ -791,7 +909,7 @@ class _CloudLibraryPanelState extends ConsumerState<_CloudLibraryPanel> {
     CloudSyncState sync,
     List<CloudTrackSummary> tracks,
   ) {
-    final groups = _artistGroups(tracks);
+    final groups = _artistGroups(context, tracks);
     final groupEntries = groups.entries.toList()
       ..sort(
         (first, second) =>
@@ -834,7 +952,7 @@ class _CloudLibraryPanelState extends ConsumerState<_CloudLibraryPanel> {
                 selected: _selectedCloudTrackIds.contains(track.id),
                 selectionEnabled: !_deletingSelected,
                 subtitle:
-                    '${context.metadata(_displayArtist(track))} · ${_formatDuration(track.duration)} · ${_formatBytes(track.fileSize)}',
+                    '${_displayArtist(context, track)} · ${_formatDuration(track.duration)} · ${_formatBytes(track.fileSize)}',
                 onPlay: () => _playCloudTrack(track, tracks),
                 onSelect: () => _toggleTrackSelection(track),
                 onDelete: () => _confirmDelete(track),
@@ -904,12 +1022,12 @@ class _CloudLibraryPanelState extends ConsumerState<_CloudLibraryPanel> {
           borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide(color: widget.glassTint, width: 1.25),
         ),
-        hintText: '搜索歌名、歌手或专辑',
+        hintText: context.tr('搜索歌名、歌手或专辑'),
         prefixIcon: const Icon(Icons.search_rounded),
         suffixIcon: _searchController.text.isEmpty
             ? null
             : IconButton(
-                tooltip: '清除搜索',
+                tooltip: context.tr('清除搜索'),
                 onPressed: () {
                   _searchController.clear();
                   setState(() {});
@@ -975,25 +1093,31 @@ class _CloudLibraryPanelState extends ConsumerState<_CloudLibraryPanel> {
           children: [
             _CloudLibraryMetric(
               icon: Icons.library_music_outlined,
-              label: '云端曲目',
-              value: '${allTracks.length} 首',
+              label: context.tr('云端曲目'),
+              value: context
+                  .tr('{count} 首')
+                  .replaceAll('{count}', '${allTracks.length}'),
               tint: widget.glassTint,
             ),
             _CloudLibraryMetric(
               icon: Icons.music_note_rounded,
-              label: '音乐',
-              value: '$audioCount 首',
+              label: context.tr('音乐'),
+              value: context
+                  .tr('{count} 首')
+                  .replaceAll('{count}', '$audioCount'),
               tint: widget.glassTint,
             ),
             _CloudLibraryMetric(
               icon: Icons.movie_outlined,
               label: 'MV',
-              value: '$videoCount 首',
+              value: context
+                  .tr('{count} 首')
+                  .replaceAll('{count}', '$videoCount'),
               tint: widget.glassTint,
             ),
             _CloudLibraryMetric(
               icon: Icons.cloud_outlined,
-              label: '已用空间',
+              label: context.tr('已用空间'),
               value: _formatBytes(totalBytes),
               tint: widget.glassTint,
             ),
@@ -1008,7 +1132,7 @@ class _CloudLibraryPanelState extends ConsumerState<_CloudLibraryPanel> {
                 child: _CloudJellyChoice(
                   selected: _view == _CloudLibraryView.tracks,
                   icon: Icons.queue_music_rounded,
-                  label: '曲目',
+                  label: context.tr('曲目'),
                   tint: widget.glassTint,
                   onTap: () => setState(() => _view = _CloudLibraryView.tracks),
                 ),
@@ -1018,7 +1142,7 @@ class _CloudLibraryPanelState extends ConsumerState<_CloudLibraryPanel> {
                 child: _CloudJellyChoice(
                   selected: _view == _CloudLibraryView.artists,
                   icon: Icons.person_outline_rounded,
-                  label: '按歌手',
+                  label: context.tr('按歌手'),
                   tint: widget.glassTint,
                   onTap: () =>
                       setState(() => _view = _CloudLibraryView.artists),
@@ -1035,7 +1159,7 @@ class _CloudLibraryPanelState extends ConsumerState<_CloudLibraryPanel> {
             _CloudJellyChoice(
               selected: _filter == _CloudMediaFilter.all,
               icon: Icons.library_music_outlined,
-              label: '全部 ${allTracks.length}',
+              label: '${context.tr('全部')} ${allTracks.length}',
               tint: widget.glassTint,
               compact: true,
               onTap: () => setState(() => _filter = _CloudMediaFilter.all),
@@ -1043,7 +1167,7 @@ class _CloudLibraryPanelState extends ConsumerState<_CloudLibraryPanel> {
             _CloudJellyChoice(
               selected: _filter == _CloudMediaFilter.audio,
               icon: Icons.music_note_rounded,
-              label: '音乐 $audioCount',
+              label: '${context.tr('音乐')} $audioCount',
               tint: widget.glassTint,
               compact: true,
               onTap: () => setState(() => _filter = _CloudMediaFilter.audio),
@@ -1088,7 +1212,7 @@ class _CloudLibraryPanelState extends ConsumerState<_CloudLibraryPanel> {
     final sync = ref.watch(cloudSyncControllerProvider);
     final controller = ref.read(cloudSyncControllerProvider.notifier);
     final tracks = sync.cloudTracks;
-    final visibleTracks = _visibleTracks(tracks);
+    final visibleTracks = _visibleTracks(context, tracks);
     return PopScope(
       canPop: !_selecting,
       onPopInvokedWithResult: (didPop, _) {
@@ -1096,23 +1220,39 @@ class _CloudLibraryPanelState extends ConsumerState<_CloudLibraryPanel> {
       },
       child: _CloudPanel(
         icon: Icons.cloud_queue_outlined,
-        title: '云端资料库',
+        title: context.tr('云端资料库'),
         description: sync.offline
-            ? '离线状态，无法连接至云端。本地曲库和播放仍可正常使用。'
+            ? context.tr('离线状态，无法连接至云端。本地曲库和播放仍可正常使用。')
             : sync.loadingCloudTracks
-            ? '正在读取云端歌曲…'
-            : '集中浏览和管理云端曲目。删除仅影响云副本，不会删除本机文件。',
+            ? context.tr('正在读取云端歌曲…')
+            : context.tr('集中浏览和管理云端曲目。删除仅影响云副本，不会删除本机文件。'),
         badge: sync.offline
-            ? '离线'
-            : (sync.loadingCloudTracks ? '读取中' : '${tracks.length} 首'),
+            ? context.tr('离线')
+            : (sync.loadingCloudTracks
+                  ? context.tr('读取中')
+                  : context
+                        .tr('{count} 首')
+                        .replaceAll('{count}', '${tracks.length}')),
         glassTint: widget.glassTint,
         actions: [
+          if (sync.recycledTracks.isNotEmpty)
+            OutlinedButton.icon(
+              onPressed: sync.loadingCloudTracks || sync.offline
+                  ? null
+                  : _showRecycleBin,
+              icon: const Icon(Icons.restore_from_trash_outlined),
+              label: Text(
+                context
+                    .tr('回收站 {count}')
+                    .replaceAll('{count}', '${sync.recycledTracks.length}'),
+              ),
+            ),
           OutlinedButton.icon(
             onPressed: sync.loadingCloudTracks
                 ? null
                 : controller.loadCloudTracks,
             icon: const Icon(Icons.refresh_rounded),
-            label: const Text('刷新云内容'),
+            label: Text(context.tr('刷新云内容')),
           ),
         ],
         content: sync.loadingCloudTracks && tracks.isEmpty
@@ -1123,9 +1263,9 @@ class _CloudLibraryPanelState extends ConsumerState<_CloudLibraryPanel> {
             : sync.offline && tracks.isEmpty
             ? const _CloudOfflineState()
             : tracks.isEmpty
-            ? const Padding(
-                padding: EdgeInsets.symmetric(vertical: 12),
-                child: Text('云空间还没有歌曲。完成一次同步后，歌曲会显示在这里。'),
+            ? Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Text(context.tr('云空间还没有歌曲。完成一次同步后，歌曲会显示在这里。')),
               )
             : Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1137,9 +1277,10 @@ class _CloudLibraryPanelState extends ConsumerState<_CloudLibraryPanel> {
                       Expanded(
                         child: Text(
                           _resultDescription(
+                            context,
                             visibleCount: _view == _CloudLibraryView.tracks
                                 ? visibleTracks.length
-                                : _artistGroups(visibleTracks).length,
+                                : _artistGroups(context, visibleTracks).length,
                             totalCount: tracks.length,
                           ),
                           style: const TextStyle(
@@ -1177,14 +1318,314 @@ class _CloudLibraryPanelState extends ConsumerState<_CloudLibraryPanel> {
                   ],
                   const SizedBox(height: 8),
                   if (visibleTracks.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 24),
-                      child: Center(child: Text('没有匹配的云端曲目。')),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 24),
+                      child: Center(child: Text(context.tr('没有匹配的云端曲目。'))),
                     )
                   else
                     _buildBrowser(context, sync, visibleTracks),
                 ],
               ),
+      ),
+    );
+  }
+}
+
+class _CloudRecycleSheet extends ConsumerWidget {
+  const _CloudRecycleSheet({required this.glassTint});
+
+  final Color glassTint;
+
+  Future<void> _confirmPermanentDelete(
+    BuildContext context,
+    WidgetRef ref,
+    CloudTrackSummary track,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(context.tr('永久删除云端文件？')),
+        content: Text(
+          context
+              .tr(
+                '“{title}”的云端记录和云端媒体文件会被永久删除，无法恢复。'
+                '本机文件不受影响。',
+              )
+              .replaceAll('{title}', context.metadata(track.title)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(context.tr('取消')),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(context.tr('永久删除')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await ref
+        .read(cloudSyncControllerProvider.notifier)
+        .permanentlyDeleteCloudTrack(track);
+  }
+
+  Future<void> _confirmEmpty(BuildContext context, WidgetRef ref) async {
+    final count = ref.read(cloudSyncControllerProvider).recycledTracks.length;
+    if (count == 0) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(context.tr('清空云端回收站？')),
+        content: Text(
+          context
+              .tr('{count} 首歌曲的云端文件会被永久删除，此操作无法撤销。')
+              .replaceAll('{count}', '$count'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(context.tr('取消')),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(context.tr('永久清空')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await ref
+          .read(cloudSyncControllerProvider.notifier)
+          .emptyCloudRecycleBin();
+    }
+  }
+
+  int _daysRemaining(CloudTrackSummary track) {
+    final purgeAt = track.purgeAt;
+    if (purgeAt == null) return 30;
+    final difference = purgeAt.difference(DateTime.now());
+    if (difference.isNegative) return 0;
+    return (difference.inHours / 24).ceil().clamp(0, 30);
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sync = ref.watch(cloudSyncControllerProvider);
+    final tracks = sync.recycledTracks;
+    final media = MediaQuery.of(context);
+    return SafeArea(
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: 760,
+            maxHeight: media.size.height * 0.78,
+          ),
+          child: LiquidGlass(
+            blur: 0,
+            borderRadius: 26,
+            tint: glassTint,
+            child: Material(
+              color: Colors.white.withValues(alpha: 0.86),
+              borderRadius: BorderRadius.circular(26),
+              clipBehavior: Clip.antiAlias,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 14, 12, 10),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color: glassTint.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(13),
+                          ),
+                          child: Icon(
+                            Icons.restore_from_trash_rounded,
+                            color: glassTint,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                context.tr('云端回收站'),
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w900,
+                                  color: AppColors.ink,
+                                ),
+                              ),
+                              Text(
+                                context
+                                    .tr('{count} 首 · 删除后保留 30 天')
+                                    .replaceAll('{count}', '${tracks.length}'),
+                                style: const TextStyle(
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (tracks.isNotEmpty)
+                          TextButton(
+                            onPressed: sync.emptyingRecycleBin
+                                ? null
+                                : () => _confirmEmpty(context, ref),
+                            child: Text(
+                              context.tr(
+                                context.tr(
+                                  sync.emptyingRecycleBin ? '清理中…' : '清空',
+                                ),
+                              ),
+                              style: const TextStyle(color: Colors.red),
+                            ),
+                          ),
+                        IconButton(
+                          tooltip: context.tr('关闭'),
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  if (tracks.isEmpty)
+                    Flexible(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 44,
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.delete_sweep_outlined,
+                              size: 44,
+                              color: AppColors.textSecondary,
+                            ),
+                            const SizedBox(height: 10),
+                            Text(context.tr('回收站是空的。')),
+                          ],
+                        ),
+                      ),
+                    )
+                  else
+                    Flexible(
+                      child: ListView.separated(
+                        padding: const EdgeInsets.all(12),
+                        itemCount: tracks.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 8),
+                        itemBuilder: (context, index) {
+                          final track = tracks[index];
+                          final restoring =
+                              sync.restoringCloudTrackId == track.id;
+                          final removing =
+                              sync.removingCloudTrackId == track.id;
+                          final busy = restoring || removing;
+                          return Container(
+                            padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.52),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.72),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  track.mediaType == 'video'
+                                      ? Icons.movie_outlined
+                                      : Icons.music_note_rounded,
+                                  color: glassTint,
+                                ),
+                                const SizedBox(width: 11),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        context.metadata(track.title),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: AppColors.ink,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        '${context.metadata(track.artist)} · '
+                                        '${context.tr('剩余 {days} 天').replaceAll('{days}', '${_daysRemaining(track)}')}',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: AppColors.textSecondary,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (busy)
+                                  const Padding(
+                                    padding: EdgeInsets.all(12),
+                                    child: SizedBox.square(
+                                      dimension: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    ),
+                                  )
+                                else ...[
+                                  TextButton.icon(
+                                    onPressed: () => ref
+                                        .read(
+                                          cloudSyncControllerProvider.notifier,
+                                        )
+                                        .restoreCloudTrack(track),
+                                    icon: const Icon(
+                                      Icons.restore_rounded,
+                                      size: 18,
+                                    ),
+                                    label: Text(context.tr('恢复')),
+                                  ),
+                                  IconButton(
+                                    tooltip: context.tr('永久删除'),
+                                    onPressed: () => _confirmPermanentDelete(
+                                      context,
+                                      ref,
+                                      track,
+                                    ),
+                                    color: Colors.red.shade700,
+                                    icon: const Icon(
+                                      Icons.delete_forever_outlined,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -1203,14 +1644,14 @@ class _CloudOfflineState extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: Colors.white.withValues(alpha: 0.28)),
       ),
-      child: const Row(
+      child: Row(
         children: [
-          Icon(Icons.cloud_off_rounded, color: AppColors.accent),
-          SizedBox(width: 10),
+          const Icon(Icons.cloud_off_rounded, color: AppColors.accent),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
-              '网络不可用。离线状态下不会影响本地曲库、下载内容或正在播放的歌曲。',
-              style: TextStyle(color: AppColors.textSecondary),
+              context.tr('网络不可用。离线状态下不会影响本地曲库、下载内容或正在播放的歌曲。'),
+              style: const TextStyle(color: AppColors.textSecondary),
             ),
           ),
         ],
@@ -1562,7 +2003,9 @@ class _CloudArtistGroup extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      '${tracks.length} 首',
+                      context
+                          .tr('{count} 首')
+                          .replaceAll('{count}', '${tracks.length}'),
                       style: const TextStyle(
                         color: AppColors.textSecondary,
                         fontSize: 12,

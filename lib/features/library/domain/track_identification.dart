@@ -17,9 +17,29 @@ class ParsedTrackName {
 class TrackNameParser {
   const TrackNameParser._();
 
-  static const _unknownArtists = {'', 'unknown artist', '未知歌手', '本地视频'};
+  /// Stable metadata sentinels are persisted independently of the UI locale.
+  /// [SonaLocalizations.metadata] translates them only at presentation time.
+  static const unknownArtist = 'Unknown artist';
+  static const unknownAlbum = 'Unknown album';
+  static const localVideoArtist = 'Local video';
+  static const standaloneVideoAlbum = 'Standalone MV';
 
-  static const _unknownAlbums = {'', 'unknown album', '未知专辑'};
+  // Keep accepting legacy localized sentinels written by earlier releases.
+  static const _unknownArtists = {
+    '',
+    'unknown artist',
+    'local video',
+    '未知歌手',
+    '本地视频',
+  };
+
+  static const _unknownAlbums = {
+    '',
+    'unknown album',
+    'standalone mv',
+    '未知专辑',
+    '独立 mv',
+  };
 
   static ParsedTrackName parse({
     required String fileName,
@@ -39,13 +59,13 @@ class TrackNameParser {
         : parsedArtist.isNotEmpty
         ? parsedArtist
         : isVideo
-        ? '本地视频'
-        : '未知歌手';
+        ? localVideoArtist
+        : unknownArtist;
     final normalizedAlbum = taggedAlbum?.trim() ?? '';
     final album = !_unknownAlbums.contains(normalizedAlbum.toLowerCase())
         ? normalizedAlbum
         : isVideo
-        ? '独立 MV'
+        ? standaloneVideoAlbum
         : '';
 
     return ParsedTrackName(
@@ -191,6 +211,7 @@ bool needsSmartOrganization(Track track) {
   final unknownArtist =
       artist.isEmpty ||
       artist == 'unknown artist' ||
+      artist == 'local video' ||
       artist == '未知歌手' ||
       artist == '本地视频';
   final suspiciousTitle =

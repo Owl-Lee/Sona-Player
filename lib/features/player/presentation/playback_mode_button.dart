@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/localization/sona_localizations.dart';
 import '../application/player_controller.dart';
 
 class PlaybackModeButton extends ConsumerWidget {
@@ -25,11 +26,11 @@ class PlaybackModeButton extends ConsumerWidget {
       playerControllerProvider.select((state) => state.playbackMode),
     );
     final controller = ref.read(playerControllerProvider.notifier);
-    final label = switch (mode) {
+    final label = context.tr(switch (mode) {
       VaultPlaybackMode.loop => '列表循环',
       VaultPlaybackMode.one => '单曲循环',
       VaultPlaybackMode.shuffle => '随机播放',
-    };
+    });
     final icon = switch (mode) {
       VaultPlaybackMode.loop => Icons.repeat_rounded,
       VaultPlaybackMode.one => Icons.repeat_one_rounded,
@@ -39,28 +40,28 @@ class PlaybackModeButton extends ConsumerWidget {
       enabled: enabled,
       tooltip: label,
       onSelected: controller.setPlaybackMode,
-      itemBuilder: (_) => const [
+      itemBuilder: (_) => [
         PopupMenuItem(
           value: VaultPlaybackMode.loop,
           child: ListTile(
-            leading: Icon(Icons.repeat_rounded),
-            title: Text('列表循环'),
+            leading: const Icon(Icons.repeat_rounded),
+            title: Text(context.tr('列表循环')),
             dense: true,
           ),
         ),
         PopupMenuItem(
           value: VaultPlaybackMode.one,
           child: ListTile(
-            leading: Icon(Icons.repeat_one_rounded),
-            title: Text('单曲循环'),
+            leading: const Icon(Icons.repeat_one_rounded),
+            title: Text(context.tr('单曲循环')),
             dense: true,
           ),
         ),
         PopupMenuItem(
           value: VaultPlaybackMode.shuffle,
           child: ListTile(
-            leading: Icon(Icons.shuffle_rounded),
-            title: Text('随机播放'),
+            leading: const Icon(Icons.shuffle_rounded),
+            title: Text(context.tr('随机播放')),
             dense: true,
           ),
         ),

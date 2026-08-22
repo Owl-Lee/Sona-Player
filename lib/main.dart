@@ -10,7 +10,9 @@ import 'package:window_manager/window_manager.dart';
 
 import 'app.dart';
 import 'core/cloud/cloud_config.dart';
+import 'features/library/data/library_backup_service.dart';
 import 'features/library/data/library_database.dart';
+import 'features/library/domain/library_backup.dart';
 import 'features/player/application/sona_audio_handler.dart';
 
 Future<void> main() async {
@@ -36,8 +38,9 @@ Future<void> main() async {
       builder: SonaAudioHandler.new,
       config: const AudioServiceConfig(
         androidNotificationChannelId: 'com.sonarvault.sona.playback',
-        androidNotificationChannelName: 'Sona 音乐播放',
-        androidNotificationChannelDescription: '显示当前歌曲和播放控制',
+        androidNotificationChannelName: 'Sona Playback',
+        androidNotificationChannelDescription:
+            'Current track information and playback controls',
         androidNotificationOngoing: false,
         androidStopForegroundOnPause: false,
         androidShowNotificationBadge: false,
@@ -59,13 +62,36 @@ Future<void> main() async {
     cloudClient = Supabase.instance.client;
   }
 
+  // A verified restore is applied before SQLite is opened. This is the only
+  // point where replacing the database file is safe on every platform.
+  try {
+    await LibraryBackupService.applyPendingRestore();
+  } on LibraryBackupException catch (error) {
+    // A damaged pending restore must never prevent access to the existing
+    // offline library. The marker is retained so Settings can report/retry it.
+    debugPrint('Sona restore was not applied: ${error.message}');
+    try {
+      await LibraryBackupService.recordPendingRestoreFailure(error.message);
+    } catch (statusError) {
+      debugPrint(
+        'Sona restore failure status could not be saved: $statusError',
+      );
+    }
+  }
   final database = LibraryDatabase();
   await database.initialize();
+  final backupService = LibraryBackupService(database: database);
+  final autoBackupCoordinator = AutoBackupCoordinator(
+    service: backupService,
+    database: database,
+  );
+  await autoBackupCoordinator.start();
 
   runApp(
     ProviderScope(
       overrides: [
         libraryDatabaseProvider.overrideWithValue(database),
+        libraryBackupServiceProvider.overrideWithValue(backupService),
         sonaAudioHandlerProvider.overrideWithValue(audioHandler),
         if (cloudClient != null)
           cloudClientProvider.overrideWithValue(cloudClient),

@@ -10,12 +10,17 @@ class VideoPlaybackRequest {
     required this.track,
     required this.queue,
     required this.source,
+    this.sourceArgs = const {},
   });
 
   final Track track;
   final List<Track> queue;
+
+  /// Locale-neutral localization key describing where this queue came from.
   final String source;
+  final Map<String, String> sourceArgs;
 }
 
-final videoPlaybackRequestProvider =
-    StateProvider<VideoPlaybackRequest?>((ref) => null);
+final videoPlaybackRequestProvider = StateProvider<VideoPlaybackRequest?>(
+  (ref) => null,
+);

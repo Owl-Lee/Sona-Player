@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
@@ -8,7 +10,9 @@ import 'package:sqflite/sqflite.dart' as mobile;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../domain/playlist_info.dart';
+import '../domain/library_backup.dart';
 import '../domain/track.dart';
+import '../domain/track_metadata_revision.dart';
 
 final libraryDatabaseProvider = Provider<LibraryDatabase>((ref) {
   throw UnimplementedError('LibraryDatabase must be overridden at startup.');
@@ -17,9 +21,16 @@ final libraryDatabaseProvider = Provider<LibraryDatabase>((ref) {
 class LibraryDatabase {
   late final Database _database;
   String? _databasePath;
+  final StreamController<void> _changeController =
+      StreamController<void>.broadcast();
   static const _maxRepairScanEntriesPerRoot = 25000;
 
   String get databasePath => _databasePath ?? '';
+  Stream<void> get changes => _changeController.stream;
+
+  void _markChanged() {
+    if (!_changeController.isClosed) _changeController.add(null);
+  }
 
   Future<void> initialize({String? databasePath}) async {
     if (databasePath == null) {
@@ -45,7 +56,7 @@ class LibraryDatabase {
     _database = await factory.openDatabase(
       _databasePath!,
       options: OpenDatabaseOptions(
-        version: 7,
+        version: 8,
         onConfigure: (database) async {
           await database.execute('PRAGMA foreign_keys = ON');
         },
@@ -53,6 +64,192 @@ class LibraryDatabase {
         onUpgrade: _upgradeSchema,
       ),
     );
+  }
+
+  /// Produces a transactionally consistent standalone SQLite image while the
+  /// live database remains open. `VACUUM INTO` also folds any WAL pages into
+  /// the snapshot, so copying the resulting file never races a writer.
+  Future<void> createConsistentSnapshot(String destinationPath) async {
+    final destination = File(destinationPath);
+    await destination.parent.create(recursive: true);
+    if (await destination.exists()) await destination.delete();
+    final escaped = destination.absolute.path.replaceAll("'", "''");
+    await _database.execute("VACUUM INTO '$escaped'");
+    if (!await destination.exists() || await destination.length() == 0) {
+      throw StateError('SQLite did not create a backup snapshot.');
+    }
+  }
+
+  Future<bool> validateIntegrity() async {
+    final rows = await _database.rawQuery('PRAGMA integrity_check');
+    if (rows.length != 1) return false;
+    return rows.single.values.single.toString().toLowerCase() == 'ok';
+  }
+
+  /// Returns every external file referenced by the database. Duplicate paths
+  /// are coalesced so a paired item or reused cover is stored only once.
+  Future<List<ReferencedLibraryFile>> getReferencedLibraryFiles() async {
+    final rolesByPath = <String, Set<String>>{};
+    void add(Object? value, String role) {
+      final filePath = value is String ? value.trim() : '';
+      if (filePath.isEmpty || filePath.startsWith('assets/')) return;
+      (rolesByPath[filePath] ??= <String>{}).add(role);
+    }
+
+    final tracks = await _database.query(
+      'tracks',
+      columns: ['path', 'video_path', 'artwork_path'],
+    );
+    for (final track in tracks) {
+      add(track['path'], 'track_media');
+      add(track['video_path'], 'track_video');
+      add(track['artwork_path'], 'track_artwork');
+    }
+    final revisions = await _database.query(
+      'track_metadata_revisions',
+      columns: ['previous_artwork_path', 'new_artwork_path'],
+    );
+    for (final revision in revisions) {
+      add(revision['previous_artwork_path'], 'metadata_revision_artwork');
+      add(revision['new_artwork_path'], 'metadata_revision_artwork');
+    }
+    final playlists = await _database.query(
+      'playlists',
+      columns: ['cover_path'],
+    );
+    for (final playlist in playlists) {
+      add(playlist['cover_path'], 'playlist_cover');
+    }
+    final appearanceRows = await _database.query(
+      'settings',
+      columns: ['key', 'value'],
+      where: 'key IN (?, ?)',
+      whereArgs: ['appearance.custom_path', 'appearance.custom_backgrounds'],
+    );
+    for (final row in appearanceRows) {
+      final key = row['key'] as String;
+      final value = row['value'] as String;
+      if (key == 'appearance.custom_path') {
+        add(value, 'custom_background');
+        continue;
+      }
+      try {
+        final decoded = jsonDecode(value);
+        if (decoded is List) {
+          for (final item in decoded.whereType<Map>()) {
+            add(item['path'], 'custom_background');
+          }
+        }
+      } on FormatException {
+        // A damaged optional appearance list must not block library backup.
+      }
+    }
+    final result = rolesByPath.entries
+        .map(
+          (entry) => ReferencedLibraryFile(path: entry.key, roles: entry.value),
+        )
+        .toList(growable: false);
+    result.sort((a, b) => a.path.compareTo(b.path));
+    return result;
+  }
+
+  /// Rebinds all file references after a self-contained backup was extracted
+  /// into this device's managed data folder.
+  Future<void> rewriteStoredFilePaths(Map<String, String> replacements) async {
+    if (replacements.isEmpty) return;
+    await _database.transaction((transaction) async {
+      for (final entry in replacements.entries) {
+        await transaction.rawUpdate(
+          'UPDATE tracks SET path = ? WHERE path = ?',
+          [entry.value, entry.key],
+        );
+        await transaction.rawUpdate(
+          'UPDATE tracks SET video_path = ? WHERE video_path = ?',
+          [entry.value, entry.key],
+        );
+        await transaction.rawUpdate(
+          'UPDATE tracks SET artwork_path = ? WHERE artwork_path = ?',
+          [entry.value, entry.key],
+        );
+        await transaction.rawUpdate(
+          'UPDATE playlists SET cover_path = ? WHERE cover_path = ?',
+          [entry.value, entry.key],
+        );
+        await transaction.rawUpdate(
+          'UPDATE track_metadata_revisions SET previous_artwork_path = ? '
+          'WHERE previous_artwork_path = ?',
+          [entry.value, entry.key],
+        );
+        await transaction.rawUpdate(
+          'UPDATE track_metadata_revisions SET new_artwork_path = ? '
+          'WHERE new_artwork_path = ?',
+          [entry.value, entry.key],
+        );
+      }
+
+      final customPathRows = await transaction.query(
+        'settings',
+        columns: ['value'],
+        where: 'key = ?',
+        whereArgs: ['appearance.custom_path'],
+        limit: 1,
+      );
+      if (customPathRows.isNotEmpty) {
+        final oldPath = customPathRows.single['value'] as String;
+        final newPath = replacements[oldPath];
+        if (newPath != null) {
+          await transaction.update(
+            'settings',
+            {'value': newPath},
+            where: 'key = ?',
+            whereArgs: ['appearance.custom_path'],
+          );
+        }
+      }
+
+      final backgroundRows = await transaction.query(
+        'settings',
+        columns: ['value'],
+        where: 'key = ?',
+        whereArgs: ['appearance.custom_backgrounds'],
+        limit: 1,
+      );
+      if (backgroundRows.isNotEmpty) {
+        final raw = backgroundRows.single['value'] as String;
+        try {
+          final decoded = jsonDecode(raw);
+          if (decoded is List) {
+            var changed = false;
+            final rewritten = decoded
+                .map((item) {
+                  if (item is! Map) return item;
+                  final copy = Map<String, Object?>.from(item);
+                  final current = copy['path'];
+                  final replacement = current is String
+                      ? replacements[current]
+                      : null;
+                  if (replacement != null) {
+                    copy['path'] = replacement;
+                    changed = true;
+                  }
+                  return copy;
+                })
+                .toList(growable: false);
+            if (changed) {
+              await transaction.update(
+                'settings',
+                {'value': jsonEncode(rewritten)},
+                where: 'key = ?',
+                whereArgs: ['appearance.custom_backgrounds'],
+              );
+            }
+          }
+        } on FormatException {
+          // Preserve an invalid optional legacy value verbatim.
+        }
+      }
+    });
+    _markChanged();
   }
 
   Future<void> _createSchema(Database database, int version) async {
@@ -71,7 +268,8 @@ class LibraryDatabase {
         play_count INTEGER NOT NULL DEFAULT 0,
         last_played_at TEXT,
         video_path TEXT,
-        media_type TEXT NOT NULL DEFAULT 'audio'
+        media_type TEXT NOT NULL DEFAULT 'audio',
+        artwork_path TEXT
       )
     ''');
     await database.execute(
@@ -109,6 +307,7 @@ class LibraryDatabase {
       )
     ''');
     await _createPlayEvents(database);
+    await _createTrackMetadataRevisions(database);
   }
 
   Future<void> _upgradeSchema(
@@ -117,7 +316,7 @@ class LibraryDatabase {
     int newVersion,
   ) async {
     if (oldVersion < 2) {
-      await database.execute('ALTER TABLE tracks ADD COLUMN video_path TEXT');
+      await _ensureColumn(database, 'tracks', 'video_path', 'TEXT');
       await database.execute('''
         CREATE TABLE IF NOT EXISTS settings (
           key TEXT PRIMARY KEY,
@@ -126,26 +325,34 @@ class LibraryDatabase {
       ''');
     }
     if (oldVersion < 3) {
-      await database.execute(
-        "ALTER TABLE tracks ADD COLUMN media_type TEXT NOT NULL DEFAULT 'audio'",
+      await _ensureColumn(
+        database,
+        'tracks',
+        'media_type',
+        "TEXT NOT NULL DEFAULT 'audio'",
       );
-      await database.execute(
-        "ALTER TABLE playlists ADD COLUMN description TEXT NOT NULL DEFAULT ''",
+      await _ensureColumn(
+        database,
+        'playlists',
+        'description',
+        "TEXT NOT NULL DEFAULT ''",
       );
-      await database.execute(
-        'ALTER TABLE playlists ADD COLUMN cover_path TEXT',
-      );
+      await _ensureColumn(database, 'playlists', 'cover_path', 'TEXT');
     }
     if (oldVersion < 4) await _createPlayEvents(database);
     if (oldVersion >= 4 && oldVersion < 5) {
-      await database.execute(
-        'ALTER TABLE play_events ADD COLUMN event_id TEXT',
+      await _ensureColumn(database, 'play_events', 'event_id', 'TEXT');
+      await _ensureColumn(
+        database,
+        'play_events',
+        'listened_ms',
+        'INTEGER NOT NULL DEFAULT 0',
       );
-      await database.execute(
-        'ALTER TABLE play_events ADD COLUMN listened_ms INTEGER NOT NULL DEFAULT 0',
-      );
-      await database.execute(
-        'ALTER TABLE play_events ADD COLUMN duration_ms INTEGER NOT NULL DEFAULT 0',
+      await _ensureColumn(
+        database,
+        'play_events',
+        'duration_ms',
+        'INTEGER NOT NULL DEFAULT 0',
       );
       await database.execute(
         'CREATE UNIQUE INDEX IF NOT EXISTS idx_play_events_event_id '
@@ -153,15 +360,11 @@ class LibraryDatabase {
       );
     }
     if (oldVersion >= 4 && oldVersion < 6) {
-      await database.execute(
-        'ALTER TABLE play_events ADD COLUMN synced_at TEXT',
-      );
+      await _ensureColumn(database, 'play_events', 'synced_at', 'TEXT');
     }
     if (oldVersion < 7) {
-      await database.execute('ALTER TABLE playlists ADD COLUMN cloud_id TEXT');
-      await database.execute(
-        'ALTER TABLE playlists ADD COLUMN updated_at TEXT',
-      );
+      await _ensureColumn(database, 'playlists', 'cloud_id', 'TEXT');
+      await _ensureColumn(database, 'playlists', 'updated_at', 'TEXT');
       await database.execute(
         'UPDATE playlists SET updated_at = created_at WHERE updated_at IS NULL',
       );
@@ -170,6 +373,47 @@ class LibraryDatabase {
         'ON playlists(cloud_id) WHERE cloud_id IS NOT NULL',
       );
     }
+    if (oldVersion < 8) {
+      await _ensureColumn(database, 'tracks', 'artwork_path', 'TEXT');
+      await _createTrackMetadataRevisions(database);
+    }
+  }
+
+  Future<void> _ensureColumn(
+    Database database,
+    String table,
+    String column,
+    String definition,
+  ) async {
+    final columns = await database.rawQuery('PRAGMA table_info($table)');
+    if (columns.any((entry) => entry['name'] == column)) return;
+    await database.execute('ALTER TABLE $table ADD COLUMN $column $definition');
+  }
+
+  Future<void> _createTrackMetadataRevisions(Database database) async {
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS track_metadata_revisions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        track_id INTEGER NOT NULL,
+        change_kind TEXT NOT NULL,
+        source TEXT NOT NULL,
+        previous_title TEXT NOT NULL,
+        previous_artist TEXT NOT NULL,
+        previous_album TEXT NOT NULL,
+        previous_artwork_path TEXT,
+        new_title TEXT NOT NULL,
+        new_artist TEXT NOT NULL,
+        new_album TEXT NOT NULL,
+        new_artwork_path TEXT,
+        created_at TEXT NOT NULL,
+        reverted_at TEXT,
+        FOREIGN KEY (track_id) REFERENCES tracks(id) ON DELETE CASCADE
+      )
+    ''');
+    await database.execute(
+      'CREATE INDEX IF NOT EXISTS idx_track_metadata_revisions_track_time '
+      'ON track_metadata_revisions(track_id, id DESC)',
+    );
   }
 
   Future<void> _createPlayEvents(Database database) async {
@@ -268,6 +512,7 @@ class LibraryDatabase {
       }
     }
     if (repaired.isEmpty) return tracks;
+    _markChanged();
     return tracks
         .map((track) => track.id == null ? track : repaired[track.id] ?? track)
         .toList(growable: false);
@@ -299,6 +544,7 @@ class LibraryDatabase {
       conflictAlgorithm: ConflictAlgorithm.ignore,
     );
     if (id == 0) return null;
+    _markChanged();
     return track.copyWith(id: id);
   }
 
@@ -309,6 +555,7 @@ class LibraryDatabase {
       where: 'id = ?',
       whereArgs: [trackId],
     );
+    _markChanged();
   }
 
   Future<void> setFavorites(
@@ -326,6 +573,7 @@ class LibraryDatabase {
         );
       }
     });
+    _markChanged();
   }
 
   Future<void> recordPlay(
@@ -352,24 +600,27 @@ class LibraryDatabase {
         'duration_ms': mediaDuration.inMilliseconds,
       });
     });
+    _markChanged();
   }
 
-  Future<void> markRecentlyPlayed(int trackId) {
-    return _database.update(
+  Future<void> markRecentlyPlayed(int trackId) async {
+    await _database.update(
       'tracks',
       {'last_played_at': DateTime.now().toIso8601String()},
       where: 'id = ?',
       whereArgs: [trackId],
     );
+    _markChanged();
   }
 
-  Future<void> clearLastPlayed(int trackId) {
-    return _database.update(
+  Future<void> clearLastPlayed(int trackId) async {
+    await _database.update(
       'tracks',
       {'last_played_at': null},
       where: 'id = ?',
       whereArgs: [trackId],
     );
+    _markChanged();
   }
 
   Future<void> clearPlayHistory(int trackId) async {
@@ -386,6 +637,7 @@ class LibraryDatabase {
         whereArgs: [trackId],
       );
     });
+    _markChanged();
   }
 
   Future<Map<int, int>> getPlayCountsSince(DateTime since) async {
@@ -422,6 +674,7 @@ class LibraryDatabase {
       'UPDATE play_events SET synced_at = ? WHERE event_id IN ($placeholders)',
       [DateTime.now().toIso8601String(), ...ids],
     );
+    _markChanged();
   }
 
   Future<void> mergeCloudPlayEvent({
@@ -447,6 +700,7 @@ class LibraryDatabase {
       'duration_ms': durationMs,
       'synced_at': DateTime.now().toIso8601String(),
     }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    _markChanged();
   }
 
   Future<void> mergeCloudTrackState({
@@ -478,16 +732,18 @@ class LibraryDatabase {
         contentHash,
       ],
     );
+    _markChanged();
   }
 
   Future<void> removeTrack(int trackId) async {
     await _database.delete('tracks', where: 'id = ?', whereArgs: [trackId]);
+    _markChanged();
   }
 
   Future<int> removeTracks(Iterable<int> trackIds) async {
     final ids = _uniquePositiveIds(trackIds);
     if (ids.isEmpty) return 0;
-    return _database.transaction((transaction) async {
+    final removed = await _database.transaction((transaction) async {
       var removed = 0;
       for (final chunk in _idChunks(ids)) {
         final placeholders = List.filled(chunk.length, '?').join(',');
@@ -499,6 +755,8 @@ class LibraryDatabase {
       }
       return removed;
     });
+    if (removed > 0) _markChanged();
+    return removed;
   }
 
   Future<void> setTrackVideoPath(int trackId, String? videoPath) async {
@@ -508,6 +766,7 @@ class LibraryDatabase {
       where: 'id = ?',
       whereArgs: [trackId],
     );
+    _markChanged();
   }
 
   Future<void> replaceTrackMedia(Track track) async {
@@ -518,6 +777,7 @@ class LibraryDatabase {
       where: 'id = ?',
       whereArgs: [track.id],
     );
+    _markChanged();
   }
 
   Future<void> updateTrackMetadata(
@@ -532,6 +792,164 @@ class LibraryDatabase {
       where: 'id = ?',
       whereArgs: [trackId],
     );
+    _markChanged();
+  }
+
+  /// Applies a user-visible metadata change and stores an exact before/after
+  /// snapshot in the same transaction. No history row is created for a no-op.
+  Future<TrackMetadataRevision?> updateTrackMetadataWithHistory(
+    int trackId, {
+    required String title,
+    required String artist,
+    required String album,
+    required String? artworkPath,
+    required String changeKind,
+    required String source,
+  }) async {
+    final revision = await _database.transaction((transaction) async {
+      final rows = await transaction.query(
+        'tracks',
+        where: 'id = ?',
+        whereArgs: [trackId],
+        limit: 1,
+      );
+      if (rows.isEmpty) return null;
+
+      final row = rows.first;
+      final previous = TrackMetadataValues(
+        title: row['title']! as String,
+        artist: row['artist']! as String,
+        album: row['album']! as String,
+        artworkPath: row['artwork_path'] as String?,
+      );
+      final current = TrackMetadataValues(
+        title: title.trim(),
+        artist: artist.trim(),
+        album: album.trim(),
+        artworkPath: _normalizedOptionalPath(artworkPath),
+      );
+      if (previous.sameAs(current)) return null;
+
+      await transaction.update(
+        'tracks',
+        {
+          'title': current.title,
+          'artist': current.artist,
+          'album': current.album,
+          'artwork_path': current.artworkPath,
+        },
+        where: 'id = ?',
+        whereArgs: [trackId],
+      );
+      final createdAt = DateTime.now();
+      final revisionId = await transaction.insert('track_metadata_revisions', {
+        'track_id': trackId,
+        'change_kind': changeKind.trim().isEmpty ? 'manual' : changeKind,
+        'source': source.trim().isEmpty ? 'Sona' : source,
+        'previous_title': previous.title,
+        'previous_artist': previous.artist,
+        'previous_album': previous.album,
+        'previous_artwork_path': previous.artworkPath,
+        'new_title': current.title,
+        'new_artist': current.artist,
+        'new_album': current.album,
+        'new_artwork_path': current.artworkPath,
+        'created_at': createdAt.toIso8601String(),
+      });
+      return TrackMetadataRevision(
+        id: revisionId,
+        trackId: trackId,
+        kind: changeKind.trim().isEmpty ? 'manual' : changeKind,
+        source: source.trim().isEmpty ? 'Sona' : source,
+        previous: previous,
+        current: current,
+        createdAt: createdAt,
+      );
+    });
+    if (revision != null) _markChanged();
+    return revision;
+  }
+
+  Future<List<TrackMetadataRevision>> getTrackMetadataHistory(
+    int trackId, {
+    int limit = 50,
+  }) async {
+    final rows = await _database.query(
+      'track_metadata_revisions',
+      where: 'track_id = ?',
+      whereArgs: [trackId],
+      orderBy: 'id DESC',
+      limit: limit.clamp(1, 200),
+    );
+    return rows
+        .map(TrackMetadataRevision.fromDatabaseMap)
+        .toList(growable: false);
+  }
+
+  /// Reverts the latest active revision only when the track still matches its
+  /// recorded after-state. This prevents an undo from overwriting a newer
+  /// write made outside the editor while a dialog was open.
+  Future<Track?> undoLatestTrackMetadataRevision(int trackId) async {
+    final track = await _database.transaction((transaction) async {
+      final revisionRows = await transaction.query(
+        'track_metadata_revisions',
+        where: 'track_id = ? AND reverted_at IS NULL',
+        whereArgs: [trackId],
+        orderBy: 'id DESC',
+        limit: 1,
+      );
+      if (revisionRows.isEmpty) return null;
+      final revision = TrackMetadataRevision.fromDatabaseMap(
+        revisionRows.first,
+      );
+      final trackRows = await transaction.query(
+        'tracks',
+        where: 'id = ?',
+        whereArgs: [trackId],
+        limit: 1,
+      );
+      if (trackRows.isEmpty) return null;
+      final row = trackRows.first;
+      final actual = TrackMetadataValues(
+        title: row['title']! as String,
+        artist: row['artist']! as String,
+        album: row['album']! as String,
+        artworkPath: row['artwork_path'] as String?,
+      );
+      if (!actual.sameAs(revision.current)) return null;
+
+      await transaction.update(
+        'tracks',
+        {
+          'title': revision.previous.title,
+          'artist': revision.previous.artist,
+          'album': revision.previous.album,
+          'artwork_path': revision.previous.artworkPath,
+        },
+        where: 'id = ?',
+        whereArgs: [trackId],
+      );
+      await transaction.update(
+        'track_metadata_revisions',
+        {'reverted_at': DateTime.now().toIso8601String()},
+        where: 'id = ?',
+        whereArgs: [revision.id],
+      );
+      final updatedRows = await transaction.query(
+        'tracks',
+        where: 'id = ?',
+        whereArgs: [trackId],
+        limit: 1,
+      );
+      return Track.fromDatabaseMap(updatedRows.single);
+    });
+    if (track != null) _markChanged();
+    return track;
+  }
+
+  String? _normalizedOptionalPath(String? value) {
+    final normalized = value?.trim();
+    return normalized == null || normalized.isEmpty ? null : normalized;
   }
 
   Future<void> setTrackDuration(int trackId, Duration duration) async {
@@ -541,6 +959,7 @@ class LibraryDatabase {
       where: 'id = ?',
       whereArgs: [trackId],
     );
+    _markChanged();
   }
 
   Future<String?> getSetting(String key) async {
@@ -559,6 +978,7 @@ class LibraryDatabase {
       'key': key,
       'value': value,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
+    _markChanged();
   }
 
   Future<List<PlaylistInfo>> getPlaylists() async {
@@ -579,8 +999,8 @@ class LibraryDatabase {
     String description = '',
     String? coverPath,
     String? cloudId,
-  }) {
-    return _database.insert('playlists', {
+  }) async {
+    final id = await _database.insert('playlists', {
       'name': name.trim(),
       'description': description.trim(),
       'cover_path': coverPath,
@@ -588,6 +1008,8 @@ class LibraryDatabase {
       'created_at': DateTime.now().toIso8601String(),
       'updated_at': DateTime.now().toIso8601String(),
     });
+    _markChanged();
+    return id;
   }
 
   Future<void> updatePlaylist(
@@ -607,15 +1029,17 @@ class LibraryDatabase {
       where: 'id = ?',
       whereArgs: [playlistId],
     );
+    _markChanged();
   }
 
-  Future<void> bindPlaylistToCloud(int playlistId, String cloudId) {
-    return _database.update(
+  Future<void> bindPlaylistToCloud(int playlistId, String cloudId) async {
+    await _database.update(
       'playlists',
       {'cloud_id': cloudId, 'updated_at': DateTime.now().toIso8601String()},
       where: 'id = ?',
       whereArgs: [playlistId],
     );
+    _markChanged();
   }
 
   Future<void> deletePlaylist(int playlistId) async {
@@ -624,6 +1048,7 @@ class LibraryDatabase {
       where: 'id = ?',
       whereArgs: [playlistId],
     );
+    _markChanged();
   }
 
   Future<bool> addTrackToPlaylist(int playlistId, int trackId) async {
@@ -636,7 +1061,7 @@ class LibraryDatabase {
   ) async {
     final ids = _uniquePositiveIds(trackIds);
     if (ids.isEmpty) return 0;
-    return _database.transaction((transaction) async {
+    final added = await _database.transaction((transaction) async {
       final orderRows = await transaction.rawQuery(
         'SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order '
         'FROM playlist_items WHERE playlist_id = ?',
@@ -667,6 +1092,8 @@ class LibraryDatabase {
       }
       return added;
     });
+    if (added > 0) _markChanged();
+    return added;
   }
 
   Future<void> removeTrackFromPlaylist(int playlistId, int trackId) async {
@@ -679,7 +1106,7 @@ class LibraryDatabase {
   ) async {
     final ids = _uniquePositiveIds(trackIds);
     if (ids.isEmpty) return 0;
-    return _database.transaction((transaction) async {
+    final removed = await _database.transaction((transaction) async {
       var removed = 0;
       for (final chunk in _idChunks(ids)) {
         final placeholders = List.filled(chunk.length, '?').join(',');
@@ -699,10 +1126,15 @@ class LibraryDatabase {
       }
       return removed;
     });
+    if (removed > 0) _markChanged();
+    return removed;
   }
 
-  Future<void> replacePlaylistTracks(int playlistId, Iterable<int> trackIds) {
-    return _database.transaction((transaction) async {
+  Future<void> replacePlaylistTracks(
+    int playlistId,
+    Iterable<int> trackIds,
+  ) async {
+    await _database.transaction((transaction) async {
       await transaction.delete(
         'playlist_items',
         where: 'playlist_id = ?',
@@ -724,6 +1156,7 @@ class LibraryDatabase {
         whereArgs: [playlistId],
       );
     });
+    _markChanged();
   }
 
   List<int> _uniquePositiveIds(Iterable<int> ids) {
@@ -757,5 +1190,8 @@ class LibraryDatabase {
     return rows.map(Track.fromDatabaseMap).toList(growable: false);
   }
 
-  Future<void> close() => _database.close();
+  Future<void> close() async {
+    await _database.close();
+    await _changeController.close();
+  }
 }

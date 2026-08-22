@@ -2,7 +2,7 @@
 
 > A local-first, offline-ready music player for Windows and Android.
 
-**English** · [简体中文](#简体中文) · [Website](https://sona.yanbaoli.me/?lang=en) · [Download](https://github.com/Owl-Lee/Sona-Player/releases/latest) · [0.4.51 release notes](docs/releases/0.4.51-preview.1.md) · [Documentation](docs/README.md) · [Report an issue](https://github.com/Owl-Lee/Sona-Player/issues)
+**English** · [简体中文](#简体中文) · [Website](https://sona.yanbaoli.me/?lang=en) · [Download](https://github.com/Owl-Lee/Sona-Player/releases/latest) · [0.5.0 release notes](docs/releases/0.5.0.md) · [Documentation](docs/README.md) · [Report an issue](https://github.com/Owl-Lee/Sona-Player/issues)
 
 ![Sona immersive vinyl player in English](docs/site/assets/screenshots/player-en.png)
 
@@ -13,20 +13,24 @@ Sona is made for people who keep their own music files. Import, organize and pla
 - **Local-first playback** — the library, playlists, favorites, queue and listening history remain usable offline.
 - **Music and MVs together** — audio and local video share one consistent playback and queue model.
 - **Smart metadata cleanup** — media tags, filename parsing and MusicBrainz are combined with optional Chromaprint / AcoustID fingerprint matching on Windows.
+- **Metadata you control** — edit title, artist, album and artwork, inspect identification history, and safely undo a calibration.
 - **A personal library** — favorites, playlists, recents, listening charts, search, filters and expressive text covers.
+- **Recoverable data management** — complete library backup and restore, lightweight automatic recovery snapshots, and a 30-day cloud recycle bin.
 - **Theme-aware design** — liquid glass, vinyl playback, adaptive contrast and wallpaper-specific effects.
+- **Scalable performance** — choose full effects, energy saver or motion-off mode for different computers and phones.
 - **Three interface languages** — Simplified Chinese, Traditional Chinese and English.
 
 ## Download
 
 | Platform | Package | Notes |
 | --- | --- | --- |
+| Windows 10 / 11 | [Download installer](https://github.com/Owl-Lee/Sona-Player/releases/latest/download/Sona-Windows-x64-Setup.exe) | 64-bit per-user installer |
 | Windows 10 / 11 | [Download ZIP](https://github.com/Owl-Lee/Sona-Player/releases/latest/download/Sona-Windows-x64.zip) | 64-bit portable build |
 | Android | [Download APK](https://github.com/Owl-Lee/Sona-Player/releases/latest/download/Sona-Android.apk) | Direct install; permanently signed preview |
 
-The current release is a public preview. Download builds only from this repository or the [official Sona website](https://sona.yanbaoli.me/?lang=en). Android builds from 0.4.51 onward use Sona's permanent release certificate.
+The current `0.5.0` release is a public preview. Download builds only from this repository or the [official Sona website](https://sona.yanbaoli.me/?lang=en). Android builds from 0.4.51 onward use Sona's permanent release certificate.
 
-> **One-time Android upgrade notice:** 0.4.50 used a development certificate and cannot be updated in place. Sync or back up anything important, uninstall 0.4.50 once, then install 0.4.51. Uninstalling clears Sona's app-local database and settings; music files stored outside the app remain untouched. Windows builds are not yet Authenticode-signed, so Windows may show a SmartScreen / Unknown publisher warning.
+> **Upgrade and signing notice:** Official 0.4.51 installations update to 0.5.0 in place. The older 0.4.50 preview used a development certificate and cannot be updated in place; preserve important data, uninstall that build once, then install 0.5.0. Uninstalling clears Sona's app-local database and settings, while media stored in shared folders remains untouched. Windows builds are not yet Authenticode-signed, so Windows may show a SmartScreen / Unknown publisher warning.
 
 ## How identification works
 
@@ -86,7 +90,7 @@ Sona is not a music distribution service and does not provide copyrighted tracks
 
 > 一款面向 Windows 与 Android 的本地优先、离线可用音乐播放器。
 
-[中文网站](https://sona.yanbaoli.me/) · [下载最新版本](https://github.com/Owl-Lee/Sona-Player/releases/latest) · [0.4.51 发布说明](docs/releases/0.4.51-preview.1.md#简体中文) · [项目文档](docs/README.md) · [提交问题](https://github.com/Owl-Lee/Sona-Player/issues) · [返回英文](#sona)
+[中文网站](https://sona.yanbaoli.me/?lang=zh) · [下载最新版本](https://github.com/Owl-Lee/Sona-Player/releases/latest) · [0.5.0 发布说明](docs/releases/0.5.0.md#简体中文) · [项目文档](docs/README.md) · [提交问题](https://github.com/Owl-Lee/Sona-Player/issues) · [返回英文](#sona)
 
 ![Sona 简体中文沉浸式黑胶播放页](docs/site/assets/screenshots/player.png)
 
@@ -97,20 +101,24 @@ Sona 面向拥有自己音乐文件的用户。它可以导入、整理并播放
 - **本地优先：** 曲库、歌单、收藏、播放队列和听歌记录在离线状态仍然可用。
 - **音乐与 MV 统一：** 音频和本地视频使用一致的播放、队列和切歌逻辑。
 - **智能整理：** 结合媒体标签、文件名语义、MusicBrainz，以及 Windows 端可选的 Chromaprint / AcoustID 声纹回退。
+- **资料可控：** 支持手动修改歌名、歌手、专辑和封面，查看识别历史并安全撤销校准。
 - **完整曲库管理：** 支持收藏、歌单、最近播放、听歌排行、搜索、筛选和文字封面。
+- **可恢复的数据管理：** 支持完整曲库备份与恢复、轻量自动恢复快照，以及保留 30 天的云端回收站。
 - **主题化外观：** 液态玻璃、黑胶唱片、自适应对比度和不同壁纸对应的专属特效。
+- **性能档位：** 可选择完整特效、节能特效或关闭动态特效，以适配不同电脑和手机。
 - **三种界面语言：** 简体中文、繁體中文和 English。
 
 ### 下载
 
 | 平台 | 安装包 | 说明 |
 | --- | --- | --- |
+| Windows 10 / 11 | [下载安装器](https://github.com/Owl-Lee/Sona-Player/releases/latest/download/Sona-Windows-x64-Setup.exe) | 64 位当前用户安装器 |
 | Windows 10 / 11 | [下载 ZIP](https://github.com/Owl-Lee/Sona-Player/releases/latest/download/Sona-Windows-x64.zip) | 64 位便携版 |
 | Android | [下载 APK](https://github.com/Owl-Lee/Sona-Player/releases/latest/download/Sona-Android.apk) | 直接安装；使用永久发布签名 |
 
-当前版本属于公开预览。请只从本仓库或 [Sona 官方网站](https://sona.yanbaoli.me/)下载安装包。自 0.4.51 起，Android 版本使用 Sona 的永久发布证书。
+当前 `0.5.0` 版本属于公开预览。请只从本仓库或 [Sona 官方网站](https://sona.yanbaoli.me/?lang=zh)下载安装包。自 0.4.51 起，Android 版本使用 Sona 的永久发布证书。
 
-> **Android 一次性升级提醒：**0.4.50 使用开发证书，无法直接覆盖升级。请先同步或备份重要内容，卸载 0.4.50 一次，再安装 0.4.51。卸载会清除 Sona 的应用内数据库和设置，但不会删除存放在应用外部的音乐文件。Windows 版本暂未使用 Authenticode 代码签名，因此系统可能显示 SmartScreen 或“未知发布者”提示。
+> **升级与签名提醒：**官方 0.4.51 可以直接覆盖升级到 0.5.0。更早的 0.4.50 使用开发证书，无法直接覆盖升级；请先保留重要资料，卸载该版本一次，再安装 0.5.0。卸载会清除 Sona 的应用内数据库和设置，但不会删除共享目录中的媒体文件。Windows 版本暂未使用 Authenticode 代码签名，因此系统可能显示 SmartScreen 或“未知发布者”提示。
 
 ### 歌曲信息识别逻辑
 

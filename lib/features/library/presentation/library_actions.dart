@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:file_picker/file_picker.dart';
 
 import '../../../core/localization/sona_localizations.dart';
 import '../../../core/theme/app_theme.dart';
@@ -8,6 +9,7 @@ import '../application/library_controller.dart';
 import '../domain/playlist_info.dart';
 import '../domain/track.dart';
 import '../domain/track_identification.dart';
+import '../domain/track_metadata_revision.dart';
 import '../../player/application/player_controller.dart';
 import 'widgets/track_artwork.dart';
 
@@ -23,7 +25,15 @@ Future<void> importMusic(
       ? await controller.importDirectory()
       : await controller.importFiles();
   if (!context.mounted || summary == null) return;
-  showLatestSnackBar(context, SnackBar(content: Text(summary.message)));
+  final base = context
+      .tr('导入 {added} 首，跳过 {skipped} 首，失败 {failed} 首')
+      .replaceAll('{added}', '${summary.added}')
+      .replaceAll('{skipped}', '${summary.skipped}')
+      .replaceAll('{failed}', '${summary.failed}');
+  final message = summary.needsReview == 0
+      ? base
+      : '$base · ${context.tr('{count} 首可智能整理').replaceAll('{count}', '${summary.needsReview}')}';
+  showLatestSnackBar(context, SnackBar(content: Text(message)));
 }
 
 Future<void> smartOrganizeTracks(
@@ -149,7 +159,9 @@ class _SmartScanDialogState extends ConsumerState<_SmartScanDialog> {
       try {
         result = await controller.identifyTrack(track);
       } catch (_) {
-        result = const TrackIdentificationResult(message: '识别失败。');
+        result = const TrackIdentificationResult(
+          message: 'unexpected_library_error',
+        );
       }
       final candidate = result.candidate;
       if (candidate != null && _changesTrack(track, candidate)) {
@@ -196,17 +208,28 @@ class _SmartScanDialogState extends ConsumerState<_SmartScanDialog> {
           children: [
             LinearProgressIndicator(value: total == 0 ? 1 : _completed / total),
             const SizedBox(height: 16),
-            Text(_stopping ? '正在停止，请稍候…' : '正在识别第 $current / $total 首'),
+            Text(
+              _stopping
+                  ? context.tr('正在停止，请稍候…')
+                  : context
+                        .tr('正在识别第 {current} / {total} 首')
+                        .replaceAll('{current}', '$current')
+                        .replaceAll('{total}', '$total'),
+            ),
             const SizedBox(height: 6),
             Text(
-              _completed < total ? widget.tracks[_completed].title : '即将完成',
+              _completed < total
+                  ? context.metadata(widget.tracks[_completed].title)
+                  : context.tr('即将完成'),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 10),
             Text(
-              '已找到 ${_suggestions.length} 条可预览的建议',
+              context
+                  .tr('已找到 {count} 条可预览的建议')
+                  .replaceAll('{count}', '${_suggestions.length}'),
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
@@ -215,7 +238,7 @@ class _SmartScanDialogState extends ConsumerState<_SmartScanDialog> {
       actions: [
         TextButton(
           onPressed: _stopping ? null : () => setState(() => _stopping = true),
-          child: const Text('停止扫描'),
+          child: Text(context.tr('停止扫描')),
         ),
       ],
     );
@@ -240,7 +263,11 @@ class _SmartReviewDialogState extends State<_SmartReviewDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text('整理预览 · 已选 ${_selected.length} 首'),
+      title: Text(
+        context
+            .tr('整理预览 · 已选 {count} 首')
+            .replaceAll('{count}', '${_selected.length}'),
+      ),
       content: SizedBox(
         width: 680,
         height: 480,
@@ -263,8 +290,10 @@ class _SmartReviewDialogState extends State<_SmartReviewDialog> {
                 overflow: TextOverflow.ellipsis,
               ),
               subtitle: Text(
-                '原：${suggestion.track.title}  ·  ${suggestion.track.artist}\n'
-                '${candidate.source} · 可信度 ${(candidate.confidence * 100).round()}%',
+                '${context.tr('原信息')}：${context.metadata(suggestion.track.title)}  ·  '
+                '${context.metadata(suggestion.track.artist)}\n'
+                '${context.metadata(candidate.source)} · ${context.tr('可信度')} '
+                '${(candidate.confidence * 100).round()}%',
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -281,7 +310,7 @@ class _SmartReviewDialogState extends State<_SmartReviewDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('取消'),
+          child: Text(context.tr('取消')),
         ),
         TextButton(
           onPressed: () => setState(() {
@@ -294,7 +323,9 @@ class _SmartReviewDialogState extends State<_SmartReviewDialog> {
             }
           }),
           child: Text(
-            _selected.length == widget.suggestions.length ? '全不选' : '全选',
+            context.tr(
+              _selected.length == widget.suggestions.length ? '全不选' : '全选',
+            ),
           ),
         ),
         FilledButton.icon(
@@ -309,7 +340,11 @@ class _SmartReviewDialogState extends State<_SmartReviewDialog> {
                     if (_selected.contains(index)) widget.suggestions[index],
                 ]),
           icon: const Icon(Icons.check_rounded),
-          label: Text('应用 ${_selected.length} 项'),
+          label: Text(
+            context
+                .tr('应用 {count} 项')
+                .replaceAll('{count}', '${_selected.length}'),
+          ),
         ),
       ],
     );
@@ -320,13 +355,14 @@ Future<void> playTrack(
   WidgetRef ref,
   Track track,
   List<Track> queue, {
-  String source = '本地曲库',
+  String source = 'queue_source_local_library',
+  Map<String, String> sourceArgs = const {},
 }) async {
   // PlayerController owns the media-type route. That keeps a click from the
   // library, queue drawer, or next/previous buttons on one safe MV hand-off.
   await ref
       .read(playerControllerProvider.notifier)
-      .playTrack(track, queue, source: source);
+      .playTrack(track, queue, source: source, sourceArgs: sourceArgs);
 }
 
 /// Shared song actions for mouse right-click on Windows and long-press on
@@ -351,6 +387,10 @@ Future<void> showTrackContextMenu(
   switch (action) {
     case 'identify':
       await _identifyTrack(context, ref, track);
+    case 'edit':
+      await _editTrackDetails(context, ref, track);
+    case 'history':
+      await _showTrackMetadataHistory(context, ref, track);
     case 'favorite':
       await library.toggleFavorite(track);
     case 'playlist':
@@ -429,15 +469,19 @@ Future<String?> _chooseTrackAction(
   }
   return showModalBottomSheet<String>(
     context: context,
+    isScrollControlled: true,
     backgroundColor: Colors.white,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
     builder: (sheetContext) => SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 18),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.82,
+        ),
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 18),
           children: [
             ListTile(
               leading: TrackArtwork(track: track, size: 46, borderRadius: 12),
@@ -477,6 +521,8 @@ List<(String, IconData, String)> _trackMenuItems(
   TrackMenuSource source,
 ) => [
   ('identify', Icons.auto_fix_high_rounded, context.tr('AI 识别歌曲信息')),
+  ('edit', Icons.edit_note_rounded, context.tr('编辑歌曲信息与封面')),
+  ('history', Icons.manage_history_rounded, context.tr('识别与编辑历史')),
   (
     'favorite',
     track.isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
@@ -491,6 +537,377 @@ List<(String, IconData, String)> _trackMenuItems(
     ('source', Icons.playlist_remove_rounded, context.tr('从歌单中移除')),
   ('library', Icons.remove_circle_outline_rounded, context.tr('从本地曲库移除')),
 ];
+
+Future<void> _editTrackDetails(
+  BuildContext context,
+  WidgetRef ref,
+  Track track,
+) async {
+  final draft = await showDialog<_TrackEditDraft>(
+    context: context,
+    builder: (_) => _TrackEditorDialog(track: track),
+  );
+  if (draft == null || !context.mounted) return;
+  try {
+    final updated = await ref
+        .read(libraryControllerProvider.notifier)
+        .updateTrackDetails(
+          track,
+          title: draft.title,
+          artist: draft.artist,
+          album: draft.album,
+          selectedArtworkPath: draft.selectedArtworkPath,
+          clearArtwork: draft.clearArtwork,
+        );
+    if (!context.mounted) return;
+    showLatestSnackBar(
+      context,
+      SnackBar(
+        content: Text(
+          context.tr(updated == null ? '歌名和歌手不能为空。' : '歌曲信息已保存，可随时从历史中撤销。'),
+        ),
+      ),
+    );
+  } catch (error) {
+    if (!context.mounted) return;
+    showLatestSnackBar(
+      context,
+      SnackBar(
+        content: Text(
+          '${context.tr('保存失败')}：${_localizedLibraryError(context, error)}',
+        ),
+      ),
+    );
+  }
+}
+
+String _localizedLibraryError(BuildContext context, Object error) {
+  if (error is LibraryOperationException) return context.tr(error.code);
+  return context.tr('unexpected_library_error');
+}
+
+Future<void> _showTrackMetadataHistory(
+  BuildContext context,
+  WidgetRef ref,
+  Track track,
+) async {
+  final controller = ref.read(libraryControllerProvider.notifier);
+  final history = await controller.metadataHistory(track);
+  if (!context.mounted) return;
+  if (history.isEmpty) {
+    showLatestSnackBar(
+      context,
+      SnackBar(content: Text(context.tr('这首歌还没有识别或手动编辑记录。'))),
+    );
+    return;
+  }
+  final shouldUndo = await showDialog<bool>(
+    context: context,
+    builder: (_) => _TrackHistoryDialog(track: track, revisions: history),
+  );
+  if (shouldUndo != true || !context.mounted) return;
+  final updated = await controller.undoLatestMetadataChange(track);
+  if (!context.mounted) return;
+  showLatestSnackBar(
+    context,
+    SnackBar(
+      content: Text(
+        updated == null
+            ? context.tr('无法撤销：歌曲信息已被其他操作修改，请重新打开历史。')
+            : '${context.tr('已撤销最近一次校准，恢复为')}“${context.metadata(updated.title)}”。',
+      ),
+    ),
+  );
+}
+
+class _TrackEditDraft {
+  const _TrackEditDraft({
+    required this.title,
+    required this.artist,
+    required this.album,
+    this.selectedArtworkPath,
+    this.clearArtwork = false,
+  });
+
+  final String title;
+  final String artist;
+  final String album;
+  final String? selectedArtworkPath;
+  final bool clearArtwork;
+}
+
+class _TrackEditorDialog extends StatefulWidget {
+  const _TrackEditorDialog({required this.track});
+
+  final Track track;
+
+  @override
+  State<_TrackEditorDialog> createState() => _TrackEditorDialogState();
+}
+
+class _TrackEditorDialogState extends State<_TrackEditorDialog> {
+  late final TextEditingController _titleController;
+  late final TextEditingController _artistController;
+  late final TextEditingController _albumController;
+  String? _selectedArtworkPath;
+  var _clearArtwork = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleController = TextEditingController(text: widget.track.title);
+    _artistController = TextEditingController(text: widget.track.artist);
+    _albumController = TextEditingController(text: widget.track.album);
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _artistController.dispose();
+    _albumController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _chooseArtwork() async {
+    final file = await FilePicker.pickFile(
+      type: FileType.custom,
+      allowedExtensions: const ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp'],
+    );
+    if (!mounted || file?.path == null) return;
+    setState(() {
+      _selectedArtworkPath = file!.path;
+      _clearArtwork = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final previewTrack = _clearArtwork
+        ? widget.track.copyWith(clearArtworkPath: true)
+        : _selectedArtworkPath == null
+        ? widget.track
+        : widget.track.copyWith(artworkPath: _selectedArtworkPath);
+    final canClear =
+        !_clearArtwork &&
+        (_selectedArtworkPath != null || widget.track.artworkPath != null);
+    return AlertDialog(
+      title: Text(context.tr('编辑歌曲信息')),
+      content: SizedBox(
+        width: 500,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TrackArtwork(track: previewTrack, size: 84, borderRadius: 20),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          context.tr('歌曲封面'),
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          context.tr(
+                            '图片会复制到 Sona 的托管目录，移动原图不会影响封面。清除后自动回退到文字封面。',
+                          ),
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 6,
+                          children: [
+                            OutlinedButton.icon(
+                              onPressed: _chooseArtwork,
+                              icon: const Icon(Icons.image_outlined),
+                              label: Text(context.tr('选择图片')),
+                            ),
+                            TextButton.icon(
+                              onPressed: canClear
+                                  ? () => setState(() {
+                                      _selectedArtworkPath = null;
+                                      _clearArtwork = true;
+                                    })
+                                  : null,
+                              icon: const Icon(Icons.auto_awesome_rounded),
+                              label: Text(context.tr('使用文字封面')),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              TextField(
+                controller: _titleController,
+                autofocus: true,
+                textInputAction: TextInputAction.next,
+                decoration: InputDecoration(
+                  labelText: context.tr('歌名'),
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _artistController,
+                textInputAction: TextInputAction.next,
+                decoration: InputDecoration(
+                  labelText: context.tr('歌手'),
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _albumController,
+                textInputAction: TextInputAction.done,
+                decoration: InputDecoration(
+                  labelText: context.tr('专辑（可留空）'),
+                  border: const OutlineInputBorder(),
+                ),
+                onSubmitted: (_) => _save(),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(context.tr('取消')),
+        ),
+        FilledButton.icon(
+          onPressed: _save,
+          icon: const Icon(Icons.save_rounded),
+          label: Text(context.tr('保存')),
+        ),
+      ],
+    );
+  }
+
+  void _save() {
+    final title = _titleController.text.trim();
+    final artist = _artistController.text.trim();
+    if (title.isEmpty || artist.isEmpty) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(context.tr('歌名和歌手不能为空。'))));
+      return;
+    }
+    Navigator.pop(
+      context,
+      _TrackEditDraft(
+        title: title,
+        artist: artist,
+        album: _albumController.text.trim(),
+        selectedArtworkPath: _selectedArtworkPath,
+        clearArtwork: _clearArtwork,
+      ),
+    );
+  }
+}
+
+class _TrackHistoryDialog extends StatelessWidget {
+  const _TrackHistoryDialog({required this.track, required this.revisions});
+
+  final Track track;
+  final List<TrackMetadataRevision> revisions;
+
+  @override
+  Widget build(BuildContext context) {
+    final canUndo = revisions.any((revision) => !revision.isReverted);
+    return AlertDialog(
+      title: Text(
+        '${context.tr('识别与编辑历史')} · ${context.metadata(track.title)}',
+      ),
+      content: SizedBox(
+        width: 650,
+        height: 440,
+        child: ListView.separated(
+          itemCount: revisions.length,
+          separatorBuilder: (_, _) => const Divider(height: 1),
+          itemBuilder: (context, index) {
+            final revision = revisions[index];
+            final time = revision.createdAt.toLocal();
+            final timestamp =
+                '${time.year}-${time.month.toString().padLeft(2, '0')}-'
+                '${time.day.toString().padLeft(2, '0')} '
+                '${time.hour.toString().padLeft(2, '0')}:'
+                '${time.minute.toString().padLeft(2, '0')}';
+            return ListTile(
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 4,
+                vertical: 8,
+              ),
+              leading: CircleAvatar(
+                child: Icon(
+                  revision.kind == 'identification'
+                      ? Icons.auto_fix_high_rounded
+                      : Icons.edit_note_rounded,
+                ),
+              ),
+              title: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      context.tr(revision.source),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  if (revision.isReverted)
+                    Chip(
+                      visualDensity: VisualDensity.compact,
+                      label: Text(context.tr('已撤销')),
+                    ),
+                ],
+              ),
+              subtitle: Text(
+                '${context.metadata(revision.previous.title)} · ${context.metadata(revision.previous.artist)}\n'
+                '→ ${context.metadata(revision.current.title)} · ${context.metadata(revision.current.artist)}\n'
+                '$timestamp${_artworkChangeLabel(context, revision)}',
+                maxLines: 4,
+                overflow: TextOverflow.ellipsis,
+              ),
+              isThreeLine: true,
+            );
+          },
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(context.tr('关闭')),
+        ),
+        FilledButton.icon(
+          onPressed: canUndo ? () => Navigator.pop(context, true) : null,
+          icon: const Icon(Icons.undo_rounded),
+          label: Text(context.tr('撤销最近一次')),
+        ),
+      ],
+    );
+  }
+
+  String _artworkChangeLabel(
+    BuildContext context,
+    TrackMetadataRevision revision,
+  ) {
+    if (revision.previous.artworkPath == revision.current.artworkPath) {
+      return '';
+    }
+    if (revision.current.artworkPath == null) {
+      return ' · ${context.tr('清除封面')}';
+    }
+    return ' · ${context.tr('更新封面')}';
+  }
+}
 
 Future<void> _identifyTrack(
   BuildContext context,
@@ -521,14 +938,19 @@ Future<void> _identifyTrack(
         .read(libraryControllerProvider.notifier)
         .identifyTrack(track);
   } catch (_) {
-    result = const TrackIdentificationResult(message: '识别过程中出现异常，原歌曲信息没有被修改。');
+    result = const TrackIdentificationResult(
+      message: 'unexpected_library_error',
+    );
   }
   if (!context.mounted) return;
   Navigator.of(context, rootNavigator: true).pop();
 
   final candidate = result.candidate;
   if (candidate == null) {
-    showLatestSnackBar(context, SnackBar(content: Text(result.message)));
+    showLatestSnackBar(
+      context,
+      SnackBar(content: Text(context.tr(result.message))),
+    );
     return;
   }
 
@@ -600,7 +1022,14 @@ Future<void> _identifyTrack(
   if (!context.mounted) return;
   showLatestSnackBar(
     context,
-    SnackBar(content: Text('已更新为“${candidate.title}”－${candidate.artist}')),
+    SnackBar(
+      content: Text(
+        context
+            .tr('已更新为“{title}”－{artist}')
+            .replaceAll('{title}', context.metadata(candidate.title))
+            .replaceAll('{artist}', context.metadata(candidate.artist)),
+      ),
+    ),
   );
 }
 
@@ -649,14 +1078,14 @@ Future<void> _addTrackToPlaylist(
   if (playlists.isEmpty) {
     showLatestSnackBar(
       context,
-      const SnackBar(content: Text('请先在“歌单”中创建一个歌单。')),
+      SnackBar(content: Text(context.tr('请先在“歌单”中创建一个歌单。'))),
     );
     return;
   }
   final selected = await showDialog<PlaylistInfo>(
     context: context,
     builder: (dialogContext) => SimpleDialog(
-      title: const Text('加入歌单'),
+      title: Text(context.tr('加入歌单')),
       children: playlists
           .map(
             (playlist) => SimpleDialogOption(
@@ -674,6 +1103,14 @@ Future<void> _addTrackToPlaylist(
   if (!context.mounted) return;
   showLatestSnackBar(
     context,
-    SnackBar(content: Text(added ? '已加入“${selected.name}”' : '这首歌已经在该歌单中')),
+    SnackBar(
+      content: Text(
+        added
+            ? context
+                  .tr('已加入“{playlist}”')
+                  .replaceAll('{playlist}', selected.name)
+            : context.tr('这首歌已经在该歌单中'),
+      ),
+    ),
   );
 }

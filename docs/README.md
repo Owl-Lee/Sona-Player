@@ -9,8 +9,12 @@ These public documents preserve Sona's reusable product and engineering decision
 | [Architecture and data flow](architecture/overview.md) | Local-first architecture, data model, playback, identification, and cloud boundaries |
 | [Interaction and motion guidelines](design/interaction-and-motion.md) | Liquid glass, desktop input, responsive layout, keyboard avoidance, and motion |
 | [Reliability test matrix](testing/reliability-checklist.md) | Playback, queues, MVs, import/deletion, offline behavior, and stress testing |
+| [Android player acceptance plan](testing/MOBILE_PLAYER_TEST_PLAN.md) | Automated lifecycle gate and the physical-device evidence required for a release |
+| [Windows performance profile](testing/PERFORMANCE_PROFILE_2026-08-22.md) | Profile-mode memory, theme switching, and native-compositor findings |
 | [Development and maintenance guide](contributing/development-guide.md) | Build steps, verification, contribution scope, and security boundaries |
+| [Release engineering](releases/RELEASE_ENGINEERING.md) | Signing, CI secrets, immutable release assets, checksums, and publication gates |
 | [Curated development history](history/development-notes.md) | Major milestones from a local player to the public preview |
+| [0.5.0 public preview notes](releases/0.5.0.md) | Data safety, metadata control, performance modes, and reliability updates |
 | [0.4.51 public preview notes](releases/0.4.51-preview.1.md) | Permanent Android signing, reliability updates, packages, and checksums |
 | [0.4.50 public preview notes](releases/0.4.50-preview.1.md) | Packages, installation notes, and SHA-256 checksums |
 
@@ -36,8 +40,12 @@ These public documents preserve Sona's reusable product and engineering decision
 | [架构与数据流](architecture/overview.md#简体中文) | 本地优先架构、数据模型、播放、识别与云端边界 |
 | [交互与动效规范](design/interaction-and-motion.md#简体中文) | 液态玻璃、桌面输入、响应式布局、键盘避让与动画 |
 | [稳定性测试矩阵](testing/reliability-checklist.md#简体中文) | 播放、队列、MV、导入删除、离线与压力测试 |
+| [Android 播放器验收计划](testing/MOBILE_PLAYER_TEST_PLAN.md#中文说明) | 自动生命周期门禁，以及正式发布所需的真机证据 |
+| [Windows 性能分析](testing/PERFORMANCE_PROFILE_2026-08-22.md#中文) | Profile 模式内存、换肤和原生合成层结论 |
 | [开发与维护指南](contributing/development-guide.md#简体中文) | 构建、验证、贡献范围与安全边界 |
+| [发布工程](releases/RELEASE_ENGINEERING.md#中文) | 签名、CI 密钥、固定发布资产、校验值与发布门禁 |
 | [开发历程摘要](history/development-notes.md#简体中文) | 从本地播放器到公开预览版的重要演进 |
+| [0.5.0 公开预览版说明](releases/0.5.0.md#简体中文) | 数据安全、资料可控性、性能档位与稳定性更新 |
 | [0.4.51 公开预览版说明](releases/0.4.51-preview.1.md#简体中文) | Android 永久签名、稳定性更新、安装包与校验值 |
 | [0.4.50 公开预览版说明](releases/0.4.50-preview.1.md#简体中文) | 安装包、安装说明与 SHA-256 校验值 |
 

@@ -2,8 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sonar_vault/core/widgets/whole_item_viewport.dart';
 import 'package:sonar_vault/features/player/presentation/vinyl_record.dart';
+import 'package:sonar_vault/features/shell/presentation/main_shell.dart';
 
 void main() {
+  test('desktop sidebar compacts at QA-height windows', () {
+    expect(shouldUseCompactDesktopSidebar(648), isTrue);
+    expect(shouldUseCompactDesktopSidebar(699), isTrue);
+    expect(shouldUseCompactDesktopSidebar(700), isFalse);
+    expect(shouldUseCompactDesktopSidebar(900), isFalse);
+  });
+
   testWidgets('fixed list viewport only exposes complete item extents', (
     tester,
   ) async {

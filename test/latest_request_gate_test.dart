@@ -50,7 +50,7 @@ void main() {
         isPlaying: true,
         position: Duration(seconds: 42),
         duration: Duration(minutes: 3),
-        queueSource: '云端资料库',
+        queueSource: 'queue_source_cloud_library',
       );
 
       for (var attempt = 0; attempt < 500; attempt++) {

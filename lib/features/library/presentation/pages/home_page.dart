@@ -87,7 +87,7 @@ class HomePage extends ConsumerWidget {
                         ),
                       SizedBox(height: desktop ? 38 : 22),
                       Text(
-                        '音乐概览 · 数据统计',
+                        context.tr('音乐概览 · 数据统计'),
                         style: Theme.of(context).textTheme.bodyMedium,
                       ),
                       const SizedBox(height: 9),
@@ -106,12 +106,14 @@ class HomePage extends ConsumerWidget {
                         children: [
                           Expanded(
                             child: Text(
-                              '最近播放',
+                              context.tr('最近播放'),
                               style: Theme.of(context).textTheme.titleLarge,
                             ),
                           ),
                           Text(
-                            '${recent.length} 首',
+                            context
+                                .tr('{count} 首')
+                                .replaceAll('{count}', '${recent.length}'),
                             style: Theme.of(context).textTheme.bodyMedium,
                           ),
                         ],
@@ -138,7 +140,7 @@ class HomePage extends ConsumerWidget {
                           children: [
                             Expanded(
                               child: Text(
-                                '听歌排行',
+                                context.tr('听歌排行'),
                                 style: Theme.of(context).textTheme.titleLarge,
                               ),
                             ),
@@ -163,7 +165,7 @@ class HomePage extends ConsumerWidget {
                                 Icons.bar_chart_rounded,
                                 size: 18,
                               ),
-                              label: const Text('查看全部'),
+                              label: Text(context.tr('查看全部')),
                             ),
                           ],
                         ),
@@ -574,7 +576,8 @@ class _RecentList extends ConsumerWidget {
                 source: TrackMenuSource.recent,
                 position: details.globalPosition,
               ),
-              onTap: () => playTrack(ref, track, tracks, source: '最近播放'),
+              onTap: () =>
+                  playTrack(ref, track, tracks, source: 'queue_source_recent'),
               borderRadius: BorderRadius.circular(20),
               child: Container(
                 padding: const EdgeInsets.all(8),
@@ -654,12 +657,12 @@ Future<void> _showRecentTrackMenu(
             ListTile(
               leading: TrackArtwork(track: track, size: 46, borderRadius: 12),
               title: Text(
-                track.title,
+                context.metadata(track.title),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
               subtitle: Text(
-                track.artist,
+                context.metadata(track.artist),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -667,8 +670,8 @@ Future<void> _showRecentTrackMenu(
             const Divider(),
             ListTile(
               leading: const Icon(Icons.history_toggle_off_rounded),
-              title: const Text('从最近播放中移除'),
-              subtitle: const Text('保留歌曲和播放次数'),
+              title: Text(context.tr('从最近播放中移除')),
+              subtitle: Text(context.tr('保留歌曲和播放次数')),
               onTap: () => Navigator.pop(sheetContext, 'recent'),
             ),
             ListTile(
@@ -676,8 +679,8 @@ Future<void> _showRecentTrackMenu(
                 Icons.remove_circle_outline_rounded,
                 color: AppColors.accent,
               ),
-              title: const Text('从本地曲库移除'),
-              subtitle: const Text('不会删除手机里的原始文件'),
+              title: Text(context.tr('从本地曲库移除')),
+              subtitle: Text(context.tr('不会删除手机里的原始文件')),
               onTap: () => Navigator.pop(sheetContext, 'library'),
             ),
           ],
@@ -695,16 +698,20 @@ Future<void> _showRecentTrackMenu(
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (dialogContext) => AlertDialog(
-      title: const Text('从本地曲库移除？'),
-      content: Text('“${track.title}”将不再显示在 Sona 中，原始文件不会被删除。'),
+      title: Text(context.tr('从本地曲库移除？')),
+      content: Text(
+        context
+            .tr('“{title}”将不再显示在 Sona 中，原始文件不会被删除。')
+            .replaceAll('{title}', context.metadata(track.title)),
+      ),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(dialogContext, false),
-          child: const Text('取消'),
+          child: Text(context.tr('取消')),
         ),
         FilledButton(
           onPressed: () => Navigator.pop(dialogContext, true),
-          child: const Text('移除'),
+          child: Text(context.tr('移除')),
         ),
       ],
     ),
@@ -735,12 +742,12 @@ Future<void> _showRecentTrackMenuV2(
             ListTile(
               leading: TrackArtwork(track: track, size: 46, borderRadius: 12),
               title: Text(
-                track.title,
+                context.metadata(track.title),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
               subtitle: Text(
-                track.artist,
+                context.metadata(track.artist),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -752,17 +759,17 @@ Future<void> _showRecentTrackMenuV2(
                     ? Icons.favorite_rounded
                     : Icons.favorite_border_rounded,
               ),
-              title: Text(track.isFavorite ? '取消收藏' : '收藏'),
+              title: Text(context.tr(track.isFavorite ? '取消收藏' : '收藏')),
               onTap: () => Navigator.pop(sheetContext, 'favorite'),
             ),
             ListTile(
               leading: const Icon(Icons.playlist_add_rounded),
-              title: const Text('加入歌单'),
+              title: Text(context.tr('加入歌单')),
               onTap: () => Navigator.pop(sheetContext, 'playlist'),
             ),
             ListTile(
               leading: const Icon(Icons.history_toggle_off_rounded),
-              title: const Text('从最近播放中移除'),
+              title: Text(context.tr('从最近播放中移除')),
               onTap: () => Navigator.pop(sheetContext, 'recent'),
             ),
             ListTile(
@@ -770,7 +777,7 @@ Future<void> _showRecentTrackMenuV2(
                 Icons.remove_circle_outline_rounded,
                 color: AppColors.accent,
               ),
-              title: const Text('从本地曲库移除'),
+              title: Text(context.tr('从本地曲库移除')),
               onTap: () => Navigator.pop(sheetContext, 'library'),
             ),
           ],
@@ -796,16 +803,20 @@ Future<void> _showRecentTrackMenuV2(
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (dialogContext) => AlertDialog(
-      title: const Text('从本地曲库移除？'),
-      content: Text('移除“${track.title}”？'),
+      title: Text(context.tr('从本地曲库移除？')),
+      content: Text(
+        context
+            .tr('移除“{title}”？')
+            .replaceAll('{title}', context.metadata(track.title)),
+      ),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(dialogContext, false),
-          child: const Text('取消'),
+          child: Text(context.tr('取消')),
         ),
         FilledButton(
           onPressed: () => Navigator.pop(dialogContext, true),
-          child: const Text('移除'),
+          child: Text(context.tr('移除')),
         ),
       ],
     ),
@@ -820,14 +831,17 @@ Future<void> _addTrackToPlaylistFromHome(
 ) async {
   final playlists = ref.read(libraryControllerProvider).playlists;
   if (playlists.isEmpty) {
-    showLatestSnackBar(context, const SnackBar(content: Text('还没有歌单')));
+    showLatestSnackBar(context, SnackBar(content: Text(context.tr('还没有歌单'))));
     return;
   }
   final selected = await showDialog(
     context: context,
     builder: (dialogContext) => SimpleDialog(
       backgroundColor: Colors.white,
-      title: const Text('加入歌单', style: TextStyle(color: AppColors.ink)),
+      title: Text(
+        context.tr('加入歌单'),
+        style: const TextStyle(color: AppColors.ink),
+      ),
       children: playlists
           .map(
             (playlist) => SimpleDialogOption(
@@ -848,7 +862,15 @@ Future<void> _addTrackToPlaylistFromHome(
   if (!context.mounted) return;
   showLatestSnackBar(
     context,
-    SnackBar(content: Text(added ? '已加入 ${selected.name}' : '这首歌已经在该歌单中')),
+    SnackBar(
+      content: Text(
+        added
+            ? context
+                  .tr('已加入 {playlist}')
+                  .replaceAll('{playlist}', selected.name)
+            : context.tr('这首歌已经在该歌单中'),
+      ),
+    ),
   );
 }
 
@@ -872,9 +894,9 @@ class _RankingPreview extends ConsumerWidget {
           borderRadius: BorderRadius.circular(18),
           border: Border.all(color: AppColors.outline),
         ),
-        child: const Text(
-          '听满一首歌的一半后，它会出现在这里。',
-          style: TextStyle(color: AppColors.textSecondary),
+        child: Text(
+          context.tr('听满一首歌的一半后，它会出现在这里。'),
+          style: const TextStyle(color: AppColors.textSecondary),
         ),
       );
     }
@@ -975,7 +997,12 @@ class _RankingPreview extends ConsumerWidget {
                           ),
                         ),
                         child: Text(
-                          '${items[index].playCount} 次',
+                          context
+                              .tr('{count} 次')
+                              .replaceAll(
+                                '{count}',
+                                '${items[index].playCount}',
+                              ),
                           style: TextStyle(
                             color: Color.lerp(AppColors.ink, accent, 0.38),
                             fontWeight: FontWeight.w800,
@@ -988,8 +1015,12 @@ class _RankingPreview extends ConsumerWidget {
                         items[index],
                         source: TrackMenuSource.ranking,
                       ),
-                      onTap: () =>
-                          playTrack(ref, items[index], ranked, source: '听歌排行'),
+                      onTap: () => playTrack(
+                        ref,
+                        items[index],
+                        ranked,
+                        source: 'queue_source_rankings',
+                      ),
                     ),
                   ),
                 ),
@@ -1020,12 +1051,12 @@ class _EmptyHome extends StatelessWidget {
         children: [
           const Icon(Icons.album_outlined, color: AppColors.accent, size: 46),
           const SizedBox(height: 12),
-          const Text('导入第一首音乐，开始建立你的私人曲库。', textAlign: TextAlign.center),
+          Text(context.tr('导入第一首音乐，开始建立你的私人曲库。'), textAlign: TextAlign.center),
           const SizedBox(height: 16),
           FilledButton.icon(
             onPressed: onImport,
             icon: const Icon(Icons.add_rounded),
-            label: const Text('导入音乐'),
+            label: Text(context.tr('导入音乐')),
           ),
         ],
       ),

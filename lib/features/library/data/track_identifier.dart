@@ -5,7 +5,6 @@ import 'dart:io';
 import 'package:audio_metadata_reader/audio_metadata_reader.dart';
 import 'package:path/path.dart' as path_util;
 
-import '../../../core/utils/chinese_text.dart';
 import '../domain/track.dart';
 import '../domain/track_identification.dart';
 
@@ -29,7 +28,9 @@ class TrackIdentifier {
   }) async {
     final file = File(track.path);
     if (!await file.exists()) {
-      return const TrackIdentificationResult(message: '找不到本地文件，无法识别。');
+      return const TrackIdentificationResult(
+        message: 'identification_file_missing',
+      );
     }
 
     final hints = _localHints(track);
@@ -44,7 +45,7 @@ class TrackIdentifier {
         if (match != null && match.confidence >= 0.72) {
           return TrackIdentificationResult(
             candidate: match,
-            message: '已通过音频声纹找到匹配结果。',
+            message: 'identification_fingerprint_match',
             fingerprintAttempted: true,
           );
         }
@@ -56,8 +57,8 @@ class TrackIdentifier {
       return TrackIdentificationResult(
         candidate: match,
         message: fingerprintAttempted
-            ? '声纹没有可靠命中，已用公开曲库完成后备校准。'
-            : '已用文件信息和公开曲库完成后备校准。',
+            ? 'identification_catalog_fallback_after_fingerprint'
+            : 'identification_catalog_fallback',
         fingerprintAttempted: fingerprintAttempted,
       );
     }
@@ -67,20 +68,20 @@ class TrackIdentifier {
     if (localChanged && hints.title.isNotEmpty) {
       return TrackIdentificationResult(
         candidate: TrackIdentificationCandidate(
-          title: toSimplifiedChinese(hints.title),
-          artist: toSimplifiedChinese(hints.artist),
-          album: toSimplifiedChinese(hints.album),
+          title: hints.title.trim(),
+          artist: hints.artist.trim(),
+          album: hints.album.trim(),
           confidence: 0.52,
-          source: '本地智能清洗',
-          explanation: '公开曲库没有可靠结果，仅根据标签和文件名给出建议，请确认后再应用。',
+          source: 'identification_source_local_cleanup',
+          explanation: 'identification_local_cleanup_explanation',
         ),
-        message: '没有查到可靠的联网结果，已生成本地清洗建议。',
+        message: 'identification_local_cleanup_suggested',
         fingerprintAttempted: fingerprintAttempted,
       );
     }
 
     return TrackIdentificationResult(
-      message: '没有找到可靠的识别结果，已保留原信息。',
+      message: 'identification_no_reliable_result',
       fingerprintAttempted: fingerprintAttempted,
     );
   }
@@ -256,12 +257,12 @@ class TrackIdentifier {
         .firstWhere((item) => item.isNotEmpty, orElse: () => '');
     if (title.isEmpty || artist.isEmpty) return null;
     return TrackIdentificationCandidate(
-      title: toSimplifiedChinese(title),
-      artist: toSimplifiedChinese(artist),
-      album: toSimplifiedChinese(album),
+      title: title,
+      artist: artist,
+      album: album,
       confidence: confidence.clamp(0, 1),
-      source: 'AcoustID 音频声纹',
-      explanation: '根据音频内容匹配，与文件名无关。',
+      source: 'identification_source_acoustid',
+      explanation: 'identification_acoustid_explanation',
     );
   }
 
@@ -289,7 +290,7 @@ class TrackIdentifier {
           .timeout(const Duration(seconds: 8));
       request.headers.set(
         HttpHeaders.userAgentHeader,
-        'Sona/0.4.51 (https://github.com/Owl-Lee/Sona-Player)',
+        'Sona/0.5.0 (https://github.com/Owl-Lee/Sona-Player)',
       );
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
       final response = await request.close().timeout(
@@ -374,12 +375,12 @@ class TrackIdentifier {
         artistSimilarity * 0.18 +
         durationSimilarity * 0.10;
     return TrackIdentificationCandidate(
-      title: toSimplifiedChinese(title),
-      artist: toSimplifiedChinese(artist),
-      album: toSimplifiedChinese(album),
+      title: title,
+      artist: artist,
+      album: album,
       confidence: confidence.clamp(0, 1),
-      source: 'MusicBrainz 公开曲库',
-      explanation: '根据清洗后的曲名、歌手和时长进行联网校准，并非声纹命中。',
+      source: 'identification_source_musicbrainz',
+      explanation: 'identification_musicbrainz_explanation',
     );
   }
 

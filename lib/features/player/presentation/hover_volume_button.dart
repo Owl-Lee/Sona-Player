@@ -4,7 +4,17 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/performance/visual_effects.dart';
 import '../application/player_controller.dart';
+
+double hoverVolumePopoverBlurFor(VisualEffectsMode mode) => 20 * mode.blurScale;
+
+double hoverVolumePopoverShadowBlurFor(VisualEffectsMode mode) =>
+    switch (mode) {
+      VisualEffectsMode.full => 22,
+      VisualEffectsMode.energySaver => 12,
+      VisualEffectsMode.off => 5,
+    };
 
 /// Desktop-first volume control: hover to adjust, click to toggle mute.
 ///
@@ -153,61 +163,71 @@ class _HoverVolumePopover extends ConsumerWidget {
       playerControllerProvider.select((state) => state.volume),
     );
     final controller = ref.read(playerControllerProvider.notifier);
+    final effectsMode = VisualEffectsScope.maybeOf(context);
+    final blur = hoverVolumePopoverBlurFor(effectsMode);
+    final shadowAlpha = switch (effectsMode) {
+      VisualEffectsMode.full => 0x26,
+      VisualEffectsMode.energySaver => 0x16,
+      VisualEffectsMode.off => 0x0C,
+    };
+    final surface = Container(
+      width: 64,
+      height: 204,
+      padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 3),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.52)),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withValues(alpha: 0.25),
+            accent.withValues(alpha: 0.16),
+          ],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Color.fromARGB(shadowAlpha, 0, 0, 0),
+            blurRadius: hoverVolumePopoverShadowBlurFor(effectsMode),
+            offset: Offset(0, effectsMode == VisualEffectsMode.full ? 9 : 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Text(
+            '${current.round()}%',
+            style: const TextStyle(
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+              fontSize: 11,
+            ),
+          ),
+          Expanded(
+            child: RotatedBox(
+              quarterTurns: 3,
+              child: Slider(
+                value: current.clamp(0, 100),
+                max: 100,
+                activeColor: accent,
+                inactiveColor: Colors.white30,
+                onChanged: controller.setVolume,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
     return Material(
       type: MaterialType.transparency,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-          child: Container(
-            width: 64,
-            height: 204,
-            padding: const EdgeInsets.symmetric(vertical: 13, horizontal: 3),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.52)),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Colors.white.withValues(alpha: 0.25),
-                  accent.withValues(alpha: 0.16),
-                ],
+        child: blur <= 0
+            ? surface
+            : BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+                child: surface,
               ),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x26000000),
-                  blurRadius: 22,
-                  offset: Offset(0, 9),
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                Text(
-                  '${current.round()}%',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                    fontSize: 11,
-                  ),
-                ),
-                Expanded(
-                  child: RotatedBox(
-                    quarterTurns: 3,
-                    child: Slider(
-                      value: current.clamp(0, 100),
-                      max: 100,
-                      activeColor: accent,
-                      inactiveColor: Colors.white30,
-                      onChanged: controller.setVolume,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
       ),
     );
   }

@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/performance/visual_effects.dart';
 import '../../application/appearance_controller.dart';
 
 const _staticAmbientPresetIds = {'navy_tide', 'magma'};
@@ -17,9 +19,11 @@ bool shouldAnimateAmbientSkin({
   required bool usesCustomBackground,
   required bool animationsDisabled,
   required bool routeIsCurrent,
+  VisualEffectsMode effectsMode = VisualEffectsMode.full,
 }) {
   return !usesCustomBackground &&
       !animationsDisabled &&
+      effectsMode.allowsAmbientMotion &&
       routeIsCurrent &&
       !_staticAmbientPresetIds.contains(presetId);
 }
@@ -52,6 +56,7 @@ class AppearanceBackdrop extends StatelessWidget {
     final viewport = mediaQuery?.size ?? const Size(1280, 720);
     final pixelRatio = mediaQuery?.devicePixelRatio ?? 1;
     final compact = viewport.width < 760;
+    final effectsMode = appearance.effectsMode;
     final preset = appearance.preset;
     final customFile = appearance.usesCustom
         ? File(appearance.customBackgroundPath!)
@@ -71,8 +76,12 @@ class AppearanceBackdrop extends StatelessWidget {
     final image = sourceImage == null
         ? null
         : ResizeImage.resizeIfNeeded(
-            _decodeBucket(viewport.width * pixelRatio),
-            _decodeBucket(viewport.height * pixelRatio),
+            _decodeBucket(
+              viewport.width * pixelRatio * effectsMode.imageDecodeScale,
+            ),
+            _decodeBucket(
+              viewport.height * pixelRatio * effectsMode.imageDecodeScale,
+            ),
             sourceImage,
           );
 
@@ -80,7 +89,10 @@ class AppearanceBackdrop extends StatelessWidget {
         ? customFile.path
         : builtInAssetPath ?? 'gradient-only';
     final highQualityPlayerArtwork =
-        forPlayer && !appearance.usesCustom && preset.id == 'midnight';
+        forPlayer &&
+        effectsMode == VisualEffectsMode.full &&
+        !appearance.usesCustom &&
+        preset.id == 'midnight';
     final scrim = forPlayer
         ? LinearGradient(
             begin: Alignment.topCenter,
@@ -168,10 +180,19 @@ class AppearanceBackdrop extends StatelessWidget {
           usesCustomBackground: appearance.usesCustom,
           animationsDisabled: mediaQuery?.disableAnimations ?? false,
           routeIsCurrent: ModalRoute.of(context)?.isCurrent ?? true,
+          effectsMode: effectsMode,
         ))
-          IgnorePointer(child: _AmbientSkinEffect(presetId: preset.id)),
+          IgnorePointer(
+            child: _AmbientSkinEffect(
+              presetId: preset.id,
+              framesPerSecond: effectsMode.ambientFramesPerSecond,
+              density: effectsMode.particleDensity,
+            ),
+          ),
         AnimatedContainer(
-          duration: const Duration(milliseconds: 170),
+          duration: effectsMode == VisualEffectsMode.off
+              ? Duration.zero
+              : const Duration(milliseconds: 170),
           curve: Curves.easeOutCubic,
           decoration: BoxDecoration(gradient: scrim),
         ),
@@ -184,38 +205,67 @@ class AppearanceBackdrop extends StatelessWidget {
 /// without animating any interactive surface. Every preset gets one visual
 /// language; imported personal wallpapers deliberately stay untouched.
 class _AmbientSkinEffect extends StatefulWidget {
-  const _AmbientSkinEffect({required this.presetId});
+  const _AmbientSkinEffect({
+    required this.presetId,
+    required this.framesPerSecond,
+    required this.density,
+  });
 
   final String presetId;
+  final int framesPerSecond;
+  final double density;
 
   @override
   State<_AmbientSkinEffect> createState() => _AmbientSkinEffectState();
 }
 
 class _AmbientSkinEffectState extends State<_AmbientSkinEffect>
-    with SingleTickerProviderStateMixin {
+    with WidgetsBindingObserver {
   static const _durationSeconds = 22;
-  static const _targetFramesPerSecond = 24;
-  static const _frameCount = _durationSeconds * _targetFramesPerSecond;
-
   late final ValueNotifier<int> _frame = ValueNotifier<int>(0);
-  late final AnimationController _controller =
-      AnimationController(
-          vsync: this,
-          duration: const Duration(seconds: _durationSeconds),
-        )
-        ..addListener(_updateFrame)
-        ..repeat();
+  Timer? _timer;
 
-  void _updateFrame() {
-    final next = (_controller.value * _frameCount).floor() % _frameCount;
-    if (_frame.value != next) _frame.value = next;
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _startTimer();
+  }
+
+  @override
+  void didUpdateWidget(covariant _AmbientSkinEffect oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.framesPerSecond != widget.framesPerSecond) {
+      _startTimer();
+    }
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
+    if (widget.framesPerSecond <= 0) return;
+    final interval = Duration(
+      microseconds: Duration.microsecondsPerSecond ~/ widget.framesPerSecond,
+    );
+    _timer = Timer.periodic(interval, (_) {
+      final frameCount = _durationSeconds * widget.framesPerSecond;
+      _frame.value = (_frame.value + 1) % frameCount;
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _startTimer();
+    } else {
+      _timer?.cancel();
+      _timer = null;
+    }
   }
 
   @override
   void dispose() {
-    _controller.removeListener(_updateFrame);
-    _controller.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    _timer?.cancel();
     _frame.dispose();
     super.dispose();
   }
@@ -228,7 +278,8 @@ class _AmbientSkinEffectState extends State<_AmbientSkinEffect>
         builder: (context, _) => CustomPaint(
           painter: _AmbientSkinPainter(
             widget.presetId,
-            _frame.value / _frameCount,
+            _frame.value / (_durationSeconds * widget.framesPerSecond),
+            widget.density,
           ),
           size: Size.infinite,
           isComplex: false,
@@ -240,10 +291,14 @@ class _AmbientSkinEffectState extends State<_AmbientSkinEffect>
 }
 
 class _AmbientSkinPainter extends CustomPainter {
-  const _AmbientSkinPainter(this.presetId, this.progress);
+  const _AmbientSkinPainter(this.presetId, this.progress, this.density);
 
   final String presetId;
   final double progress;
+  final double density;
+
+  int _count(int fullCount, {int minimum = 1}) =>
+      (fullCount * density).round().clamp(minimum, fullCount);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -282,7 +337,7 @@ class _AmbientSkinPainter extends CustomPainter {
 
   void _paintFallingLeaves(Canvas canvas, Size size) {
     final desktop = size.shortestSide >= 700;
-    final count = desktop ? 24 : 14;
+    final count = _count(desktop ? 24 : 14);
     for (var index = 0; index < count; index++) {
       final cycle = (progress * .42 + index * .173) % 1;
       final leafSize = (desktop ? 30.0 : 20.0) + (index % 4) * 4.0;
@@ -330,7 +385,7 @@ class _AmbientSkinPainter extends CustomPainter {
   void _paintPetals(Canvas canvas, Size size) {
     final paint = Paint()
       ..color = const Color(0xFFFFE0EC).withValues(alpha: 0.38);
-    final count = size.shortestSide >= 700 ? 20 : 12;
+    final count = _count(size.shortestSide >= 700 ? 20 : 12);
     for (var index = 0; index < count; index++) {
       final cycle = (progress * .72 + index * .149) % 1;
       final x = (index * 101.0 % size.width) + math.sin(cycle * 9 + index) * 38;
@@ -348,7 +403,7 @@ class _AmbientSkinPainter extends CustomPainter {
 
   void _paintAurora(Canvas canvas, Size size) {
     final phase = progress * math.pi * 2;
-    for (var band = 0; band < 3; band++) {
+    for (var band = 0; band < _count(3); band++) {
       final path = Path()..moveTo(-30, size.height * (.16 + band * .13));
       for (var x = 0.0; x <= size.width + 40; x += 36) {
         final y =
@@ -367,7 +422,7 @@ class _AmbientSkinPainter extends CustomPainter {
   }
 
   void _paintEmbers(Canvas canvas, Size size) {
-    final count = size.shortestSide >= 700 ? 19 : 11;
+    final count = _count(size.shortestSide >= 700 ? 19 : 11);
     for (var index = 0; index < count; index++) {
       final cycle = (progress * .35 + index * .137) % 1;
       final x = index * 149.0 % size.width + math.sin(cycle * 7 + index) * 22;
@@ -381,7 +436,7 @@ class _AmbientSkinPainter extends CustomPainter {
   }
 
   void _paintCrystalReflections(Canvas canvas, Size size) {
-    final count = size.shortestSide >= 700 ? 12 : 7;
+    final count = _count(size.shortestSide >= 700 ? 12 : 7);
     for (var index = 0; index < count; index++) {
       final cycle = (progress * .18 + index * .19) % 1;
       final x = index * 191.0 % size.width + math.sin(cycle * 6) * 24;
@@ -418,7 +473,7 @@ class _AmbientSkinPainter extends CustomPainter {
   }
 
   void _paintMistOrbs(Canvas canvas, Size size) {
-    for (var index = 0; index < 4; index++) {
+    for (var index = 0; index < _count(4); index++) {
       final cycle = (progress * .16 + index * .24) % 1;
       final r = size.shortestSide * (.10 + index * .018);
       final x = (index * .31 + cycle * .18) * size.width;
@@ -436,7 +491,7 @@ class _AmbientSkinPainter extends CustomPainter {
   }
 
   void _paintBloomPetals(Canvas canvas, Size size) {
-    final count = size.shortestSide >= 700 ? 12 : 8;
+    final count = _count(size.shortestSide >= 700 ? 12 : 8);
     final petalWidth = size.shortestSide >= 700 ? 25.0 : 22.0;
     final petalHeight = size.shortestSide >= 700 ? 11.0 : 9.5;
     for (var index = 0; index < count; index++) {
@@ -461,7 +516,7 @@ class _AmbientSkinPainter extends CustomPainter {
   void _paintLimeBubbles(Canvas canvas, Size size) {
     // Soft oversized jelly highlights create a visible breathing effect,
     // rather than repeating the same small particle field as other skins.
-    for (var index = 0; index < 4; index++) {
+    for (var index = 0; index < _count(4); index++) {
       final phase = progress * math.pi * 2 + index * 1.6;
       final scale = 1 + math.sin(phase) * .08;
       final width = size.width * (.18 + index * .035) * scale;
@@ -512,7 +567,7 @@ class _AmbientSkinPainter extends CustomPainter {
   }
 
   void _paintWineVeil(Canvas canvas, Size size) {
-    for (var band = 0; band < 2; band++) {
+    for (var band = 0; band < _count(2); band++) {
       final path = Path()..moveTo(-40, size.height * (.72 + band * .10));
       for (var x = 0.0; x < size.width + 80; x += 32) {
         path.lineTo(
@@ -552,5 +607,7 @@ class _AmbientSkinPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _AmbientSkinPainter oldDelegate) =>
-      oldDelegate.presetId != presetId || oldDelegate.progress != progress;
+      oldDelegate.presetId != presetId ||
+      oldDelegate.progress != progress ||
+      oldDelegate.density != density;
 }

@@ -50,6 +50,10 @@ app.*.map.json
 !.env.example
 *.keystore
 *.jks
+*.p12
+*.pfx
+*.pem
+*.private-key
 **/key.properties
 supabase/.temp/
 
@@ -57,8 +61,20 @@ supabase/.temp/
 *.sqlite
 *.sqlite3
 *.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal
+*.sqlite3-wal
+*.sqlite3-shm
+*.sqlite3-journal
+*.sonabackup
+*.sonabackup.*
 /release/
 /dist/
+/artifacts/
 
 # Widget Preview related
 .widget_preview/

@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:crop_your_image/crop_your_image.dart';
 import 'package:flutter/material.dart';
 
+import '../../../../core/localization/sona_localizations.dart';
 import '../../../../core/theme/app_theme.dart';
 
 class ImageCropDialog extends StatefulWidget {
@@ -10,8 +11,8 @@ class ImageCropDialog extends StatefulWidget {
     super.key,
     required this.imageBytes,
     required this.aspectRatio,
-    this.title = '裁切图片',
-    this.hint = '拖动图片调整位置，双指或滚轮缩放',
+    required this.title,
+    required this.hint,
   });
 
   final Uint8List imageBytes;
@@ -23,8 +24,8 @@ class ImageCropDialog extends StatefulWidget {
     BuildContext context, {
     required Uint8List imageBytes,
     required double aspectRatio,
-    String title = '裁切图片',
-    String hint = '拖动图片调整位置，双指或滚轮缩放',
+    String? title,
+    String? hint,
   }) {
     return showDialog<Uint8List>(
       context: context,
@@ -32,8 +33,8 @@ class ImageCropDialog extends StatefulWidget {
       builder: (_) => ImageCropDialog(
         imageBytes: imageBytes,
         aspectRatio: aspectRatio,
-        title: title,
-        hint: hint,
+        title: title ?? context.tr('裁切图片'),
+        hint: hint ?? context.tr('拖动图片调整位置，双指或滚轮缩放'),
       ),
     );
   }
@@ -115,7 +116,9 @@ class _ImageCropDialogState extends State<ImageCropDialog> {
                           case CropFailure(:final cause):
                             setState(() {
                               _cropping = false;
-                              _error = '裁切失败：$cause';
+                              _error = context
+                                  .tr('裁切失败：{cause}')
+                                  .replaceAll('{cause}', '$cause');
                             });
                         }
                       },
@@ -138,7 +141,12 @@ class _ImageCropDialogState extends State<ImageCropDialog> {
                   const SizedBox(width: 7),
                   Expanded(
                     child: Text(
-                      '已锁定当前播放器比例 ${widget.aspectRatio.toStringAsFixed(2)} : 1',
+                      context
+                          .tr('已锁定当前播放器比例 {ratio} : 1')
+                          .replaceAll(
+                            '{ratio}',
+                            widget.aspectRatio.toStringAsFixed(2),
+                          ),
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                   ),
@@ -146,7 +154,7 @@ class _ImageCropDialogState extends State<ImageCropDialog> {
                     onPressed: _cropping
                         ? null
                         : () => Navigator.of(context).pop(),
-                    child: const Text('取消'),
+                    child: Text(context.tr('取消')),
                   ),
                   const SizedBox(width: 8),
                   FilledButton.icon(
@@ -165,7 +173,7 @@ class _ImageCropDialogState extends State<ImageCropDialog> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.check_rounded),
-                    label: Text(_cropping ? '处理中' : '使用这一区域'),
+                    label: Text(context.tr(_cropping ? '处理中' : '使用这一区域')),
                   ),
                 ],
               ),
