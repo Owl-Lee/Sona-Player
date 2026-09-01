@@ -2,7 +2,9 @@
 
 > A local-first, offline-ready music player for Windows and Android.
 
-**English** · [简体中文](#简体中文) · [Website](https://sona.yanbaoli.me/?lang=en) · [Download](https://github.com/Owl-Lee/Sona-Player/releases/latest) · [0.5.0 release notes](docs/releases/0.5.0.md) · [Documentation](docs/README.md) · [Report an issue](https://github.com/Owl-Lee/Sona-Player/issues)
+**English** · [简体中文](#简体中文) · [Website](https://sona.yanbaoli.me/?lang=en) · [Source & development](https://github.com/Owl-Lee/Sona) · [Download](https://github.com/Owl-Lee/Sona-Player/releases/latest) · [0.5.0 release notes](docs/releases/0.5.0.md) · [Documentation](docs/README.md) · [Report an issue](https://github.com/Owl-Lee/Sona/issues)
+
+> This repository remains the public website and signed release channel. Active source development, issues, contribution guidance, and security reporting live in the canonical [Owl-Lee/Sona](https://github.com/Owl-Lee/Sona) repository.
 
 ![Sona immersive vinyl player in English](docs/site/assets/screenshots/player-en.png)
 
@@ -90,7 +92,7 @@ Sona is not a music distribution service and does not provide copyrighted tracks
 
 > 一款面向 Windows 与 Android 的本地优先、离线可用音乐播放器。
 
-[中文网站](https://sona.yanbaoli.me/?lang=zh) · [下载最新版本](https://github.com/Owl-Lee/Sona-Player/releases/latest) · [0.5.0 发布说明](docs/releases/0.5.0.md#简体中文) · [项目文档](docs/README.md) · [提交问题](https://github.com/Owl-Lee/Sona-Player/issues) · [返回英文](#sona)
+[中文网站](https://sona.yanbaoli.me/?lang=zh) · [源码与开发](https://github.com/Owl-Lee/Sona) · [下载最新版本](https://github.com/Owl-Lee/Sona-Player/releases/latest) · [0.5.0 发布说明](docs/releases/0.5.0.md#简体中文) · [项目文档](docs/README.md) · [提交问题](https://github.com/Owl-Lee/Sona/issues) · [返回英文](#sona)
 
 ![Sona 简体中文沉浸式黑胶播放页](docs/site/assets/screenshots/player.png)
 
