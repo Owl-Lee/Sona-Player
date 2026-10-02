@@ -1,287 +1,168 @@
-const screenshots = {
-  home: {
-    src: {
-      zh: 'site/assets/screenshots/home.png',
-      en: 'site/assets/screenshots/home-en.png',
-    },
-    zh: { alt: 'Sona 首页真实截图', title: 'Sona · 首页' },
-    en: { alt: 'Real screenshot of the Sona home screen', title: 'Sona · Home' },
-  },
-  library: {
-    src: {
-      zh: 'site/assets/screenshots/library.png',
-      en: 'site/assets/screenshots/library-en.png',
-    },
-    zh: { alt: 'Sona 本地曲库真实截图', title: 'Sona · 本地曲库' },
-    en: { alt: 'Real screenshot of the Sona local library', title: 'Sona · Library' },
-  },
-  settings: {
-    src: {
-      zh: 'site/assets/screenshots/settings.png',
-      en: 'site/assets/screenshots/settings-en.png',
-    },
-    zh: { alt: 'Sona 设置页真实截图', title: 'Sona · 设置' },
-    en: { alt: 'Real screenshot of Sona settings', title: 'Sona · Settings' },
-  },
+(()=>{
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const fmt=s=>{s=Math.max(0,Math.floor(s));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
+
+/* ---------- i18n ---------- */
+const EN={
+  skip:'Skip to content',nav1:'Offline',nav2:'Features',nav3:'Interface',nav4:'Technology',nav5:'Download',nav5b:'Download',cta:'Download free',
+  eyebrow:'Windows · Android · 0.5.0 public preview',h1:'Keep your music<br><span class="grad-text">in your own hands.</span>',
+  lead:'Sona is a local-first music player that works offline. Music, music videos, the play queue, smart tidying and personal themes live together in one calm, easy space.',
+  ctaHero:'Download free',ctaUI:'See the real app',p1b:'Local first',p1:'Plays without a connection',p2b:'Two platforms',p3b:'No subscription',p3:'Free during preview',
+  winTitle:'Sona · Now playing',n1b:'Offline playback',n1:'Keeps going when the network drops',n2b:'Smart tidying',n2:'Finds song and artist names',hint:'Tap the record ↓',
+  k1:'Why Sona',h2off:'A player shouldn’t go blank<br>when the Wi‑Fi does.',
+  offP:'Sona is built around local files. Reliable playback comes first, and cloud sync is an extra rather than a requirement. Your library lives in a SQLite database on your device, so scanning, favorites, playlists and history all keep working offline.',
+  statTxt:'of the local playback path runs without the cloud',online:'Online',offline:'Offline',network:'Network',artist:'Eason Chan · K歌之王 AIR',
+  r1:'Local library · 11 songs',r2:'Queue and playlists',r3:'Favorites and history',r4:'Cloud sync',ok1:'Ready',ok2:'Ready',ok3:'Ready',synced:'Synced',later:'Syncs later',
+  tryIt:'Try switching the network off.',offNote:'Network is off. The music keeps playing and everything local still works.',onNote:'Back online. Cloud sync picks up where it left off.',
+  k2:'Features',h2feat:'Every essential,<br>carefully finished.',featP:'From importing a song to continuous playback, tidying, recognition, favorites, music videos and the full player, each step feels like part of one product rather than a pile of features.',
+  f5tag:'Personal themes',f5h:'Change the mood, not just the color',f5p:'Liquid glass, a spinning record, accent-linked colors and wallpaper effects make a complete skin. Selection states, text contrast and controls adapt to every theme.',
+  f1tag:'Local first',f1h:'Plays without a connection',f1p:'Your library, queue, playlists, favorites and history never depend on the network. If the cloud is unavailable, Sona tells you and keeps playing.',
+  f2tag:'Audio + video',f2h:'Music and videos, one set of rules',f2p:'Sona detects the media type, links records to their videos and keeps the player in step as the queue moves on.',
+  f3tag:'Smart metadata',f3h:'Give messy files their names back',f3p:'Media tags, filename cleanup, MusicBrainz and an optional Chromaprint / AcoustID fingerprint fallback work together to correct titles, artists and albums.',fl1:'Media tags',fl2:'Filename cleanup',
+  f4tag:'Your library',f4h:'Favorites, playlists, recent plays and rankings',f4p:'A song behaves the same wherever you find it: same playback, same right‑click menu, same queue.',
+  k3:'Real interface',h2ui:'Not a concept.<br>This is Sona today.',uiP:'These screenshots come straight from the Windows app. Lime Jelly is just one theme; the app has more wallpapers, colors and effects to choose from.',
+  t1:'Player',t2:'Home',t3:'Library',t4:'Settings',c1:'Adaptive liquid glass',c2:'High‑contrast text',c3:'Full keyboard and mouse support',
+  k4:'Technology',h2tech:'Design you can see,<br>engineering you can trust.',techP:'Flutter powers both platforms, SQLite stores your library locally and SHA‑256 removes duplicates. Network calls, cloud reads and rapid skipping are debounced, cancellable and fall back safely.',
+  s2:'Local library database',s3:'Fingerprint dedupe',s4:'Open music database',src:'View the source code',pipeT:'Song recognition · example',replay:'Replay ↻',
+  st1:'Read media tags',st2:'Clean the filename',st3:'Open music database',st4:'Audio fingerprint',fd1:'Title',fd2:'Artist',fd3:'Album',pipeHint:'Click a step, or let it run.',conf:'Confidence',
+  k5:'Privacy',h2priv:'The cloud is an extra,<br>not a requirement.',pv1h:'Local database',pv1:'Your music files and core data stay on your device.',pv2h:'Optional recognition',pv2:'Sona only contacts public music databases when you ask it to identify songs.',pv3h:'Backup and restore',pv3:'Version 0.5.0 can export and restore your full Sona library and the files the app manages.',
+  k6:'Get started',h2dl:'Bring your music<br><span class="grad-text">back to your own player.</span>',dlP:'Sona 0.5.0 public preview. No subscription; download and play.',
+  for:'For',for2:'For',winMeta:'64‑bit installer · EXE',apkMeta:'Direct install · APK',dl1:'Download',dl2:'Download',portQ:'Prefer a portable build?',portA:'Download the Windows x64 portable ZIP ↗',
+  notesT:'Read before installing',notes1:'Official builds use a permanent Android signature from 0.4.51 onward, so the 0.5.0 APK installs over 0.4.51 directly. If you installed the 0.4.50 development build or another signature, export a full backup and keep your media files, uninstall once, then install 0.5.0. Uninstalling removes Sona’s private database, settings and automatic snapshots, but not media in shared folders.',
+  notes2:'The Windows installer is not Authenticode‑signed yet, so SmartScreen may show “Unknown publisher”. Only download from this page or GitHub Releases.',
+  footTag:'A space for your music that is truly yours.',
+  navLabel:'Page navigation',tabsLabel:'Interface screenshots',footLabel:'Footer',
+  altPlayer:'Sona’s immersive record player in the Lime Jelly theme',alt0:'Immersive record player',alt1:'Home: library stats and recent plays',alt2:'Local library list',alt3:'Settings'
 };
+const ZH={online:'在线',offline:'离线',synced:'已同步',later:'稍后同步',tryIt:'试着关掉网络看看。',offNote:'网络已断开。音乐没停，本地的一切照常工作。',onNote:'网络已恢复，云端同步继续。',pipeHint:'点击步骤，或等它自动运行。'};
+const CAPS={zh:['沉浸式黑胶播放页，唱片与液态玻璃控件随主题变化。','首页汇总曲库、收藏和已配对的 MV，最近播放一眼可见。','本地曲库支持搜索、筛选和批量管理，音频与视频一目了然。','设置按外观、账号、语言、存储和关于分组，层级清楚。'],
+  en:['The immersive player: the record and liquid-glass controls follow your theme.','Home sums up your library, favorites and paired videos, with recent plays at a glance.','The local library supports search, filters and batch actions, with audio and video clearly marked.','Settings are grouped into appearance, account, language, storage and about.']};
+const TITLES={zh:['Sona · 正在播放','Sona · 首页','Sona · 本地曲库','Sona · 设置'],en:['Sona · Now playing','Sona · Home','Sona · Library','Sona · Settings']};
+$$('[data-i]').forEach(el=>{if(!(el.dataset.i in ZH))ZH[el.dataset.i]=el.innerHTML});
+$$('[data-i-alt]').forEach(el=>ZH[el.dataset.iAlt]=el.alt);
+$$('[data-i-aria]').forEach(el=>ZH[el.dataset.iAria]=el.getAttribute('aria-label'));
+$$('img[data-en-src]').forEach(el=>el.dataset.zhSrc=el.getAttribute('src'));
+let lang='zh';
+const t=k=>(lang==='en'&&EN[k]!=null)?EN[k]:ZH[k];
 
-const heroScreenshots = {
-  zh: {
-    src: 'site/assets/screenshots/player.png',
-    alt: 'Sona 的沉浸式黑胶播放页，使用青柠软糖主题',
-  },
-  en: {
-    src: 'site/assets/screenshots/player-en.png',
-    alt: 'Sona immersive vinyl player in English using the Lime Candy theme',
-  },
-};
+/* ---------- reveal ---------- */
+const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}}),{rootMargin:'0px 0px -8% 0px'});
+$$('[data-reveal]').forEach(el=>io.observe(el));
 
-const translations = {
-  '跳到正文': 'Skip to content',
-  '亮点': 'Highlights',
-  '界面': 'Gallery',
-  '技术': 'Technology',
-  '下载': 'Download',
-  '立即体验': 'Try it now',
-  'Windows · Android · 公开预览': 'Windows · Android · Public preview',
-  '把音乐留在': 'Keep your music',
-  '自己手里。': 'in your own hands.',
-  'Sona 是一款本地优先、离线可用的音乐播放器。它把音乐、MV、播放队列、智能整理和个性化主题放进同一个安静、顺手的空间。': 'Sona is a local-first music player built to work offline. It brings music, MVs, queues, smart organization and expressive themes into one calm, effortless space.',
-  '免费下载': 'Free download',
-  '看看真实界面': 'See the real interface',
-  '本地优先': 'Local-first',
-  '无网也能听': 'Works offline',
-  '双端': 'Two platforms',
-  '不订阅': 'No subscription',
-  '当前预览版免费': 'Free during public preview',
-  'Sona · 正在播放': 'Sona · Now playing',
-  '离线播放': 'Offline playback',
-  '网络断开也不中断': 'Keeps playing without internet',
-  '智能整理': 'Smart organization',
-  '识别歌名与歌手': 'Identifies titles and artists',
-  '为什么是 Sona': 'Why Sona',
-  '播放器不该在断网时': 'A music player should not',
-  '变成一块空白。': 'go blank when the internet does.',
-  'Sona 从一开始就围绕本地文件设计：先让播放可靠，再把云同步当作增强，而不是依赖。你的音乐库保存在本机 SQLite 数据库中，扫描、收藏、歌单和播放记录都能在离线状态继续工作。': 'Sona is designed around local files from day one: reliable playback comes first, while cloud sync remains an enhancement rather than a dependency. Your library lives in a local SQLite database, so scanning, favorites, playlists and listening history keep working offline.',
-  '本地播放路径不依赖云端': 'Local playback never depends on the cloud',
-  '核心亮点': 'Core highlights',
-  '该有的能力，': 'The features you need,',
-  '每一项都认真打磨。': 'refined with care.',
-  '从导入一首歌，到连续播放、整理、识别、收藏，再到 MV 与完整播放页，Sona 尽量让每一步都像一个完整产品，而不是功能拼盘。': 'From importing a track to continuous playback, organization, identification, favorites, MVs and the full player, every step is designed as part of one coherent product.',
-  '无网照常播放': 'Playback that survives offline',
-  '本地优先设计': 'LOCAL FIRST',
-  '本地曲库、播放队列、歌单、收藏与记录不依赖网络。云端不可用时，应用会明确提示，但不会拖垮本地体验。': 'Your local library, queue, playlists, favorites and history do not depend on the network. When the cloud is unavailable, Sona tells you clearly without disrupting local playback.',
-  '音乐和 MV 在同一套逻辑里': 'Music and MVs, one consistent system',
-  '音频 + 视频': 'AUDIO + VIDEO',
-  '自动识别媒体类型、关联唱片与 MV，队列切歌时同步更新播放界面。': 'Sona detects media types, links records and MVs, and keeps the player interface in sync as the queue changes.',
-  '让杂乱文件重新有名字': 'Turn messy files back into music',
-  '智能元数据': 'SMART METADATA',
-  '结合标签、文件名清理、MusicBrainz，以及可选 Chromaprint / AcoustID 声纹回退，校准歌曲、歌手和专辑信息。': 'Media tags, filename cleanup, MusicBrainz and optional Chromaprint / AcoustID fingerprint fallback work together to refine track, artist and album metadata.',
-  '收藏、歌单、最近播放与排行': 'Favorites, playlists, recents and charts',
-  '你的曲库': 'YOUR LIBRARY',
-  '同一首歌在不同入口保持一致的播放、右键与队列逻辑，快速找到真正想听的内容。': 'The same track keeps consistent playback, context-menu and queue behavior across every entry point, so the music you want is always easy to reach.',
-  '不止换颜色，而是换一种听歌氛围': 'More than colors—a different listening mood',
-  '个性化主题': 'PERSONAL THEMES',
-  '液态毛玻璃、黑胶唱片、主题色联动与壁纸专属特效共同构成完整皮肤。选中态、文字对比度和控制器会随主题适配。': 'Liquid glass, vinyl playback, adaptive accent colors and wallpaper-specific effects form complete themes. Selection states, text contrast and controls adapt with them.',
-  '真实界面': 'Real interface',
-  '不是概念图。': 'Not a concept.',
-  '就是现在的 Sona。': 'This is Sona today.',
-  '以下画面直接采集自 Windows 版本。青柠软糖主题只是其中一种外观，应用内还可以切换多套壁纸、色彩与特效。': 'These screens come directly from the Windows build. Lime Candy is only one look—Sona includes multiple wallpapers, palettes and effects.',
-  '首页': 'Home',
-  '本地曲库': 'Library',
-  '设置': 'Settings',
-  '自适应液态玻璃': 'Adaptive liquid glass',
-  '高对比文字': 'High-contrast text',
-  '完整键鼠交互': 'Complete mouse and keyboard support',
-  '简体 / 繁体 / English': 'Simplified / Traditional / English',
-  '技术路径': 'Engineering',
-  '看得见设计，': 'Design you can see,',
-  '也看得见工程底座。': 'engineering you can trust.',
-  'Sona 使用 Flutter 构建双端体验，以 SQLite 保存本地资料，通过 SHA-256 去重，并对网络、云端读取与连续切歌做了防抖、取消与失败回退。': 'Sona uses Flutter for a two-platform experience, SQLite for local data, SHA-256 for deduplication, and cancellation, debouncing and graceful fallback for network, cloud and rapid queue operations.',
-  '查看公开源代码': 'View public source',
-  '歌曲信息识别流程': 'Track metadata pipeline',
-  '读取媒体标签': 'Read media tags',
-  '最快、完全离线': 'Fastest and fully offline',
-  '清理文件名': 'Clean filenames',
-  '识别歌手与歌曲语义': 'Infer artist and title semantics',
-  '公共音乐资料库': 'Public music databases',
-  '补齐专辑与规范名称': 'Complete albums and canonical names',
-  '可选音频声纹': 'Optional audio fingerprinting',
-  'AcoustID 作为困难样本回退': 'AcoustID fallback for difficult files',
-  '隐私与边界': 'Privacy and boundaries',
-  '云端是增强，': 'Cloud is an enhancement,',
-  '不是使用前提。': 'not a requirement.',
-  '本地数据库': 'Local database',
-  '音乐文件与核心资料保存在你的设备上。': 'Music files and core metadata stay on your device.',
-  '可选识别服务': 'Optional identification services',
-  '只有主动识别时才请求公开音乐资料服务。': 'Public music services are contacted only when you request identification.',
-  '备份与恢复': 'Backup and restore',
-  '0.5.0 可导出和恢复完整 Sona 曲库及由应用管理的资源。': 'Version 0.5.0 can export and restore the complete Sona library and its managed assets.',
-  '开始使用': 'Get started',
-  '现在，把自己的音乐': 'Now bring your music',
-  '带回自己的播放器。': 'back to your own player.',
-  'Sona 0.5.0 公开预览版。无需订阅，下载即用。': 'Sona 0.5.0 public preview. No subscription—download and listen.',
-  '适用于': 'For',
-  '64 位安装器 · EXE': '64-bit installer · EXE',
-  '直接安装 · APK': 'Direct install · APK',
-  '更喜欢便携版？': 'Prefer a portable build?',
-  '下载 Windows x64 便携版 ZIP': 'Download the Windows x64 portable ZIP',
-  'Sona 官方版本从 0.4.51 起使用永久 Android 签名。官方 0.5.0 APK 可以直接覆盖官方 0.4.51。如果已安装 0.4.50 开发签名版或其他不同签名版本，请先同步需要保留的资料并保留媒体文件，然后卸载一次该版本，再安装 0.5.0。卸载会清除 Sona 的应用私有数据库、设置和自动快照，但不会删除普通共享目录中的媒体文件。迁移前请导出完整备份。Windows 安装包目前没有 Authenticode 签名，SmartScreen 可能显示“Unknown publisher（未知发布者）”。请只从本页面或 GitHub Release 下载。': 'Official Sona releases have used the permanent Android signing identity since 0.4.51. The official 0.5.0 APK updates official 0.4.51 installations in place. If you have the 0.4.50 development-signed APK or another differently signed build, sync what you need and keep your media files, then uninstall that build once before installing 0.5.0. Uninstalling clears Sona\'s app-private database, settings, and automatic snapshots, but not media in normal shared folders. Export a complete backup before migrations. Windows packages are not Authenticode-signed yet, so SmartScreen may show “Unknown publisher.” Download only from this page or GitHub Releases.',
-  '为自己的音乐，做一个真正属于自己的空间。': 'A space that truly belongs to you and your music.',
-};
-
-const attributeTranslations = {
-  'Sona 首页': 'Sona home',
-  '主导航': 'Main navigation',
-  '产品特性摘要': 'Product highlights',
-  'Sona 的沉浸式黑胶播放页，使用青柠软糖主题': 'Sona immersive vinyl player using the Lime Candy theme',
-  '产品界面预览': 'Product interface preview',
-  'Sona 首页真实截图': 'Real screenshot of the Sona home screen',
-  '歌曲智能识别流程': 'Smart track identification pipeline',
-};
-
-const englishToChinese = Object.fromEntries(
-  Object.entries(translations).map(([chinese, english]) => [english, chinese]),
-);
-const englishAttributeToChinese = Object.fromEntries(
-  Object.entries(attributeTranslations).map(([chinese, english]) => [english, chinese]),
-);
-
-const siteMetadata = {
-  zh: {
-    title: 'Sona — 本地优先的音乐播放器',
-    description: 'Sona 是一款本地优先、离线可用的 Windows 与 Android 音乐播放器，支持 MV、智能元数据整理、液态玻璃主题与跨设备同步基础。',
-    ogTitle: 'Sona — 把音乐留在自己手里',
-    ogDescription: '本地优先、离线可用，兼顾音乐、MV、智能整理与个性化主题。',
-  },
-  en: {
-    title: 'Sona — A local-first music player',
-    description: 'Sona is a local-first, offline-ready music player for Windows and Android with MVs, smart metadata, liquid-glass themes and sync foundations.',
-    ogTitle: 'Sona — Keep your music in your own hands',
-    ogDescription: 'Local-first and offline-ready, with music, MVs, smart organization and expressive themes.',
-  },
-};
-
-const header = document.querySelector('[data-header]');
-const showcaseImage = document.querySelector('[data-showcase-image]');
-const showcaseTitle = document.querySelector('[data-shot-title]');
-const heroImage = document.querySelector('[data-hero-image]');
-const tabs = [...document.querySelectorAll('[data-shot]')];
-const languageToggle = document.querySelector('[data-language-toggle]');
-
-const textNodes = [];
-const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-let textNode;
-while ((textNode = walker.nextNode())) {
-  const visibleText = textNode.nodeValue.trim();
-  const original = translations[visibleText] ? visibleText : englishToChinese[visibleText];
-  if (original) textNodes.push({ node: textNode, original });
+/* ---------- header ---------- */
+const hdr=$('#hdr'), links=$$('.nav a'), secs=links.map(a=>$(a.getAttribute('href')));
+function onScroll(){
+  hdr.classList.toggle('scrolled',scrollY>10);
+  let c=-1; secs.forEach((s,i)=>{if(s.getBoundingClientRect().top<innerHeight*.45)c=i});
+  links.forEach((a,i)=>a.setAttribute('aria-current',i===c?'true':'false'));
 }
+addEventListener('scroll',onScroll,{passive:true}); onScroll();
 
-const translatedAttributes = [];
-document.querySelectorAll('[aria-label], [alt], [title]').forEach((element) => {
-  ['aria-label', 'alt', 'title'].forEach((attribute) => {
-    const visibleValue = element.getAttribute(attribute);
-    const original = visibleValue && (attributeTranslations[visibleValue] ? visibleValue : englishAttributeToChinese[visibleValue]);
-    if (original) translatedAttributes.push({ element, attribute, original });
+/* ---------- record: slides out of the sleeve and spins; tap to pause ---------- */
+const stage=$('#stage'), vinyl=$('#vinyl'), rb=$('#recordBtn');
+let playing=!reduce, ang=0, spd=playing?1:0, last=performance.now();
+function updateRecordLabel(){rb.setAttribute('aria-pressed',playing);rb.setAttribute('aria-label',lang==='en'?(playing?'Pause the record':'Play the record'):(playing?'暂停唱片':'播放唱片'))}
+stage.classList.toggle('paused',!playing);
+rb.addEventListener('click',()=>{playing=!playing;stage.classList.toggle('paused',!playing);updateRecordLabel()});
+(function tick(now){
+  const dt=Math.min(64,now-last);last=now;
+  spd+=((playing?1:0)-spd)*.05; ang+=spd*dt*.2;
+  vinyl.style.transform=`rotate(${ang}deg)`;
+  requestAnimationFrame(tick);
+})(last);
+
+/* ---------- offline demo ---------- */
+const sw=$('#netSw'), pl=$('#player');
+let online=true, touched=false;
+function syncNet(){
+  sw.setAttribute('aria-checked',online); pl.classList.toggle('off',!online);
+  $('#netTxt').textContent=t(online?'online':'offline');
+  $('#cloudBadge').textContent=t(online?'synced':'later');
+  $('#pNote').textContent=touched?t(online?'onNote':'offNote'):t('tryIt');
+}
+sw.addEventListener('click',()=>{online=!online;touched=true;syncNet()});
+let ps=30; const pNow=$('#pNow'), pBar=$('#pBar');
+const tickP=()=>{pNow.textContent=fmt(ps);pBar.style.width=(ps/281*100)+'%'}; tickP();
+if(!reduce)setInterval(()=>{ps=ps>=281?0:ps+1;tickP()},1000);
+
+/* ---------- interface tabs ---------- */
+const tabs=$$('.seg [role=tab]'), shots=$$('#shot img'); let curTab=0;
+function selTab(i,focus){
+  curTab=i;
+  tabs.forEach((b,j)=>{b.setAttribute('aria-selected',j===i);b.tabIndex=j===i?0:-1});
+  shots.forEach((im,j)=>{im.classList.toggle('on',j===i);if(j===i)im.loading='eager'});
+  $('#cap').textContent=CAPS[lang][i]; $('#frameTitle').textContent=TITLES[lang][i];
+  if(focus)tabs[i].focus();
+}
+tabs.forEach((b,i)=>{
+  b.addEventListener('click',()=>selTab(i));
+  b.addEventListener('keydown',e=>{
+    if(e.key==='ArrowRight'){e.preventDefault();selTab((i+1)%tabs.length,true)}
+    if(e.key==='ArrowLeft'){e.preventDefault();selTab((i-1+tabs.length)%tabs.length,true)}
   });
 });
 
-const savedLanguage = (() => {
-  const requested = new URLSearchParams(window.location.search).get('lang');
-  if (requested === 'en' || requested === 'zh') return requested;
-  try { return localStorage.getItem('sona-site-language'); } catch { return null; }
-})();
-let currentLanguage = savedLanguage === 'zh' ? 'zh' : 'en';
-
-const replaceText = (node, value) => {
-  const leading = node.nodeValue.match(/^\s*/)?.[0] ?? '';
-  const trailing = node.nodeValue.match(/\s*$/)?.[0] ?? '';
-  node.nodeValue = `${leading}${value}${trailing}`;
-};
-
-const updateShowcaseLanguage = () => {
-  const activeKey = tabs.find((tab) => tab.classList.contains('active'))?.dataset.shot || 'home';
-  const shot = screenshots[activeKey];
-  const copy = shot[currentLanguage];
-  showcaseImage.src = shot.src[currentLanguage];
-  showcaseImage.alt = copy.alt;
-  showcaseTitle.textContent = copy.title;
-};
-
-const applyLanguage = (language, persist = true) => {
-  currentLanguage = language === 'en' ? 'en' : 'zh';
-  document.documentElement.lang = currentLanguage === 'en' ? 'en' : 'zh-CN';
-  document.documentElement.dataset.language = currentLanguage;
-
-  textNodes.forEach(({ node, original }) => replaceText(node, currentLanguage === 'en' ? translations[original] : original));
-  translatedAttributes.forEach(({ element, attribute, original }) => {
-    element.setAttribute(attribute, currentLanguage === 'en' ? attributeTranslations[original] : original);
+/* ---------- metadata pipeline ---------- */
+const S=[
+  {t:['K歌之王air(day ver)','tag'],a:null,b:null,c:22,zh:'标签里只有一个不规范的标题，歌手和专辑都缺失。',en:'The tags only hold a messy title. Artist and album are missing.'},
+  {t:['K歌之王 AIR (Day Version)','filename'],a:['chen yi xun','filename'],b:null,c:48,zh:'去掉序号与码率，从文件名里拆出歌手和规范标题。',en:'Track number and bitrate are stripped, and the artist is split out of the filename.'},
+  {t:['K歌之王 AIR (Day Version)','MusicBrainz'],a:['陈奕迅','MusicBrainz'],b:['K歌之王 AIR','MusicBrainz'],c:86,zh:'查询公共音乐资料库，补齐规范名称与专辑。',en:'An open music database fills in the canonical names and the album.'},
+  {t:['K歌之王 AIR (Day Version)','AcoustID'],a:['陈奕迅','AcoustID'],b:['K歌之王 AIR','AcoustID'],c:97,zh:'声纹比对确认结果。只在困难样本上启用，且完全可选。',en:'An audio fingerprint confirms the match. It only runs on hard cases and is fully optional.'}
+];
+const SRC={tag:{zh:'标签',en:'Tags'},filename:{zh:'文件名',en:'Filename'}};
+const sb=$$('#steps button'), conf=$('#conf'), note=$('#stepNote');
+let cur=-1, auto=null;
+function go(i,quiet){
+  cur=i; const s=S[i];
+  sb.forEach((b,j)=>{b.classList.toggle('done',j<i);j===i?b.setAttribute('aria-current','step'):b.removeAttribute('aria-current')});
+  ['t','a','b'].forEach(k=>{
+    const dd=$(`dd[data-k="${k}"]`), sr=$(`[data-src="${k}"]`), v=s[k], nv=v?v[0]:'—';
+    if(dd.textContent!==nv){dd.textContent=nv;if(!quiet&&v){dd.classList.remove('flash');void dd.offsetWidth;dd.classList.add('flash')}}
+    dd.classList.toggle('empty',!v); sr.textContent=v?(SRC[v[1]]?SRC[v[1]][lang]:v[1]):'';
   });
+  conf.style.width=s.c+'%'; note.textContent=s[lang];
+}
+function run(){clearInterval(auto);if(reduce){go(3);return}go(0);auto=setInterval(()=>{if(cur>=3){clearInterval(auto);return}go(cur+1)},2000)}
+sb.forEach((b,i)=>b.addEventListener('click',()=>{clearInterval(auto);go(i)}));
+$('#replay').addEventListener('click',run);
+const pio=new IntersectionObserver(es=>{if(es[0].isIntersecting){pio.disconnect();run()}},{threshold:.45});
+pio.observe($('#pipe'));
 
-  const metadata = siteMetadata[currentLanguage];
-  document.title = metadata.title;
-  document.querySelector('meta[name="description"]')?.setAttribute('content', metadata.description);
-  document.querySelector('meta[property="og:title"]')?.setAttribute('content', metadata.ogTitle);
-  document.querySelector('meta[property="og:description"]')?.setAttribute('content', metadata.ogDescription);
-  const canonicalUrl = currentLanguage === 'zh'
-    ? 'https://sona.yanbaoli.me/?lang=zh'
-    : 'https://sona.yanbaoli.me/';
-  document.querySelector('link[rel="canonical"]')?.setAttribute('href', canonicalUrl);
-  document.querySelector('meta[property="og:url"]')?.setAttribute('content', canonicalUrl);
-
-  languageToggle.textContent = currentLanguage === 'en' ? '中文' : 'EN';
-  languageToggle.setAttribute('aria-label', currentLanguage === 'en' ? '切换至中文' : 'Switch to English');
-  languageToggle.title = currentLanguage === 'en' ? '切换至中文' : 'Switch to English';
-  heroImage.src = heroScreenshots[currentLanguage].src;
-  heroImage.alt = heroScreenshots[currentLanguage].alt;
-  updateShowcaseLanguage();
-
-  const url = new URL(window.location.href);
-  if (currentLanguage === 'zh') url.searchParams.set('lang', 'zh');
-  else url.searchParams.delete('lang');
-  history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
-  if (persist) {
-    try { localStorage.setItem('sona-site-language', currentLanguage); } catch { /* preferences remain optional */ }
+/* ---------- language ---------- */
+function applyLang(l,save){
+  lang=l==='en'?'en':'zh';
+  document.documentElement.lang=lang==='en'?'en':'zh-CN';
+  $$('[data-i]').forEach(el=>{const v=t(el.dataset.i);if(v!=null)el.innerHTML=v});
+  $$('[data-i-alt]').forEach(el=>el.alt=t(el.dataset.iAlt));
+  $$('[data-i-aria]').forEach(el=>el.setAttribute('aria-label',t(el.dataset.iAria)));
+  $$('img[data-en-src]').forEach(el=>el.src=lang==='en'?el.dataset.enSrc:el.dataset.zhSrc);
+  const b=$('#langBtn');b.textContent=lang==='en'?'中文':'EN';b.setAttribute('aria-label',lang==='en'?'切换到中文':'Switch to English');
+  const meta=META[lang];
+  document.title=meta.title;
+  $('meta[name="description"]')?.setAttribute('content',meta.description);
+  $('meta[property="og:title"]')?.setAttribute('content',meta.ogTitle);
+  $('meta[property="og:description"]')?.setAttribute('content',meta.ogDescription);
+  const canonical=lang==='zh'?'https://sona.yanbaoli.me/?lang=zh':'https://sona.yanbaoli.me/';
+  $('link[rel="canonical"]')?.setAttribute('href',canonical);
+  $('meta[property="og:url"]')?.setAttribute('content',canonical);
+  syncNet(); selTab(curTab); updateRecordLabel();
+  if(cur>=0)go(cur,true); else note.textContent=t('pipeHint');
+  if(save){
+    try{localStorage.setItem('sona-site-language',lang)}catch(e){}
+    try{const u=new URL(location.href);if(lang==='zh')u.searchParams.set('lang','zh');else u.searchParams.delete('lang');history.replaceState(null,'',u)}catch(e){}
   }
+}
+const META={
+  en:{title:'Sona — A local-first music player',description:'Sona is a local-first, offline-ready music player for Windows and Android with MVs, smart metadata, liquid-glass themes and sync foundations.',ogTitle:'Sona — Keep your music in your own hands',ogDescription:'Local-first and offline-ready, with music, MVs, smart organization and expressive themes.'},
+  zh:{title:'Sona — 本地优先的音乐播放器',description:'Sona 是一款本地优先、离线可用的音乐播放器，支持 Windows 与 Android，带 MV、智能整理、液态玻璃主题和云同步。',ogTitle:'Sona — 把音乐留在自己手里',ogDescription:'本地优先、离线可用，音乐、MV、智能整理和个性化主题都在一起。'}
 };
-
-document.querySelector('[data-year]').textContent = new Date().getFullYear();
-languageToggle?.addEventListener('click', () => applyLanguage(currentLanguage === 'zh' ? 'en' : 'zh'));
-applyLanguage(currentLanguage, false);
-
-const updateHeader = () => header?.classList.toggle('scrolled', window.scrollY > 24);
-updateHeader();
-window.addEventListener('scroll', updateHeader, { passive: true });
-
-const observer = new IntersectionObserver((entries) => {
-  entries.forEach((entry) => {
-    if (entry.isIntersecting) {
-      entry.target.classList.add('visible');
-      observer.unobserve(entry.target);
-    }
-  });
-}, { threshold: 0.12 });
-
-document.querySelectorAll('.reveal').forEach((element) => observer.observe(element));
-
-tabs.forEach((tab) => {
-  tab.addEventListener('click', () => {
-    const next = screenshots[tab.dataset.shot];
-    if (!next || tab.classList.contains('active')) return;
-
-    tabs.forEach((item) => {
-      const active = item === tab;
-      item.classList.toggle('active', active);
-      item.setAttribute('aria-selected', String(active));
-    });
-
-    showcaseImage.classList.add('switching');
-    window.setTimeout(() => {
-      showcaseImage.src = next.src[currentLanguage];
-      showcaseImage.alt = next[currentLanguage].alt;
-      showcaseTitle.textContent = next[currentLanguage].title;
-      showcaseImage.classList.remove('switching');
-    }, 180);
-  });
-});
+$('#langBtn').addEventListener('click',()=>applyLang(lang==='en'?'zh':'en',true));
+// Same rule as the previous site: ?lang= wins, then the saved choice, otherwise English.
+let initial='en';
+try{
+  const q=new URLSearchParams(location.search).get('lang');
+  initial=(q==='en'||q==='zh')?q:(localStorage.getItem('sona-site-language')==='zh'?'zh':'en');
+}catch(e){}
+applyLang(initial,false);
+})();
